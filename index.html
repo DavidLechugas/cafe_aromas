@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Inventario y Nómina - Café Aguachiquense</title>
+    <link rel="stylesheet" href="style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Merriweather:wght@400;700&family=Roboto:wght@300;400;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+
+    <div id="app-container">
+
+        <section id="auth-view" class="active">
+            <div id="auth-box">
+                <img src="img/logo.png" alt="Logo de Café" id="auth-logo">
+                <h2>Acceso al Sistema</h2>
+                <form id="login-form" method="POST" action="backend/login.php">
+                    <input type="text" id="username" name="username" placeholder="Usuario" required>
+                    <input type="password" id="password" name="password" placeholder="Contraseña" required>
+                    <button type="submit">Iniciar Sesión</button>
+                    <p>¿No tienes cuenta? <a href="#" id="show-register">Regístrate</a></p>
+                </form>
+
+                <form id="register-form" style="display: none;">
+                    <input type="text" id="reg-username" name="username" placeholder="Nuevo Usuario" required>
+                    <input type="password" id="reg-password" name="password" placeholder="Nueva Contraseña" required>
+                    <input type="password" id="reg-confirm" name="confirm_password" placeholder="Confirmar Contraseña"
+                        required>
+                    <button type="submit">Registrarse</button>
+                    <p>¿Ya tienes cuenta? <a href="#" id="show-login">Iniciar Sesión</a></p>
+                </form>
+
+            </div>
+        </section>
+
+        <main id="main-app" style="display: none;">
+
+            <nav id="navbar">
+                <div class="logo-title">
+                    <img src="img/logo.png" alt="Logo" class="nav-logo">
+                    <h1>Café Horizonte de Neiva | Gestión</h1>
+                </div>
+                <div class="nav-links">
+                    <a href="#" class="nav-link active" data-view="inicio">Inicio</a>
+                    <a href="#" class="nav-link" data-view="inventario">Producción</a>
+                    <a href="#" class="nav-link" data-view="gestion-trabajadores">Gestión Trabajadores</a>
+                    <a href="#" class="nav-link" data-view="calcular">Nómina y Reportes</a>
+                    <a href="#" class="nav-link" data-view="gastos">Gestión de Gastos</a>
+                    <a href="#" class="nav-link" data-view="clasificacion">Clasificación</a>
+                    <a href="#" class="nav-link" data-view="acerca">Acerca de</a>
+                    <button id="logout-btn">Cerrar Sesión</button>
+                </div>
+            </nav>
+
+            <section id="inicio-view" class="view active-view">
+                <h2>Bienvenido al Panel de Control</h2>
+                <p>Usa la barra de navegación para acceder a las funcionalidades del sistema.</p>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Cosechado</h3>
+                        <p id="total-cosechado">0 kg</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Pagos Pendientes</h3>
+                        <p id="pagos-pendientes">$ 0 COP</p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Trabajadores Activos</h3>
+                        <p>30 Cosecha + 2 Choferes</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="inventario-view" class="view" style="display: none;">
+                <h2>Registro de Producción</h2>
+                <p>Ingresa los kilos cosechados por cada trabajador.</p>
+
+                <form id="produccion-form">
+                    <label for="trabajador-select">Seleccionar Trabajador:</label>
+                    <select id="trabajador-select" required>
+                        <option value="">-- Elige un trabajador --</option>
+                    </select>
+
+                    <div id="nombre-input-container" style="display: none;">
+                        <label for="trabajador-nombre">Nombre del Trabajador (solo lectura):</label>
+                        <input type="text" id="trabajador-nombre" placeholder="Nombre" disabled>
+                        <p style="margin-top: 5px; font-size: 0.9em;">*Para modificar el nombre, usa la pestaña "Gestión
+                            Trabajadores".</p>
+                    </div>
+
+                    <label for="kilos-input">Kilos Cosechados (kg):</label>
+                    <input type="number" id="kilos-input" min="0" step="0.01" required placeholder="Ej: 50.5">
+
+                    <button type="submit">Registrar Producción</button>
+                </form>
+
+                <h3>Registro de Producción Reciente</h3>
+                <table id="produccion-table">
+                    <thead>
+                        <tr>
+                            <th>Cosecha ID</th>
+                            <th>Nombre</th>
+                            <th>Kilos (kg)</th>
+                            <th>Fecha</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="gestion-trabajadores-view" class="view" style="display: none;">
+                <h2>Gestión de Trabajadores (Nombres)</h2>
+                <p>Ingresa el ID (1-30) para agregar, modificar o eliminar el nombre de un trabajador. El nombre por
+                    defecto es 'Trabajador ID'.</p>
+
+                <form id="gestionar-trabajador-form">
+                    <label for="trabajador-id-input">ID del Trabajador (1 a 30):</label>
+                    <input type="number" id="trabajador-id-input" min="1" max="30" required>
+
+                    <label for="trabajador-nombre-input">Nombre del Trabajador:</label>
+                    <input type="text" id="trabajador-nombre-input" placeholder="Ej: Juan Pérez" required>
+
+                    <button type="submit" id="btn-guardar-trabajador">Guardar o Modificar Nombre</button>
+                    <button type="button" id="btn-eliminar-trabajador" class="btn-rojo">Eliminar Nombre (Volver a por
+                        defecto)</button>
+                </form>
+
+                <hr>
+
+                <h3>Lista de Trabajadores</h3>
+                <ul id="lista-nombres-trabajadores">
+                </ul>
+            </section>
+
+            <section id="calcular-view" class="view" style="display: none;">
+                <h2>Nómina y Reportes</h2>
+
+                <div id="nomina-cosecha-section">
+                    <h3>Pago a Trabajadores (Cosecha)</h3>
+                    <p>Muestra el resumen de kilos cosechados , el pago pendiente y el detalle por trabajador. $1000
+                        COP/kg.</p>
+
+                    <button id="generar-reporte-cosecha-btn" style="margin-bottom: 20px;">Generar Reporte Completo
+                        (CSV)</button>
+
+                    <table id="reporte-cosecha-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nombre</th>
+                                <th>Kilos cosechados (kg)</th>
+                                <th>Pago Pendiente ($)</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+
+                <hr style="margin: 40px 0;">
+
+                <div id="nomina-choferes-section">
+                    <h3>Pago a Choferes (Pago por Viaje)</h3>
+                    <form id="chofer-pago-form">
+                        <label for="chofer-select">Seleccionar Chofer:</label>
+                        <select id="chofer-select" required>
+                            <option value="">-- Elige un chofer --</option>
+                            <option value="chofer-1">Jose Torres</option>
+                            <option value="chofer-2">Omar Ojeda</option>
+                        </select>
+
+                        <label for="viajes-input">Número de Viajes:</label>
+                        <input type="number" id="viajes-input" min="1" required placeholder="Ej: 5">
+
+                        <label for="tarifa-input">Tarifa por Viaje ($ COP):</label>
+                        <input type="number" id="tarifa-input" value="50000" min="1000" required>
+                        <button type="submit">Registrar Pago de Viajes</button>
+                    </form>
+
+                    <button id="generar-reporte-choferes-btn" style="margin-top: 20px;">Generar Reporte Choferes
+                        (CSV)</button>
+                </div>
+            </section>
+
+            <section id="gastos-view" class="view" style="display: none;">
+                <h2>Gestión de Gastos Operacionales</h2>
+                <p>Registra cualquier gasto incurrido, como combustible, mantenimiento o insumos.</p>
+
+                <form id="registro-gasto-form">
+                    <label for="gasto-descripcion">Descripción del Gasto:</label>
+                    <input type="text" id="gasto-descripcion" placeholder="Ej: Combustible para camioneta" required>
+
+                    <label for="gasto-monto">Monto del Gasto ($ COP):</label>
+                    <input type="number" id="gasto-monto" min="1" required placeholder="Ej: 150000">
+
+                    <label for="gasto-fecha">Fecha del Gasto:</label>
+                    <input type="date" id="gasto-fecha" required>
+
+                    <button type="submit">Registrar Gasto</button>
+                </form>
+
+                <hr style="margin: 30px 0;">
+
+                <h3>Historial de Gastos</h3>
+                <button id="generar-reporte-gastos-btn" style="margin-bottom: 20px;">Generar Reporte de Gastos
+                    (CSV)</button>
+                <table id="gastos-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Fecha</th>
+                            <th>Descripción</th>
+                            <th>Monto ($ COP)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </section>
+
+            <section id="clasificacion-view" class="view" style="display: none;">
+                <h2>📊 Clasificación de Cosecha por Variedad</h2>
+                <p>Registre la clasificación de los kilos de café cosechados, diferenciando entre Cenicafé y Variedad
+                    Colombia.</p>
+
+                <div class="data-block">
+                    <h3>Estado General de Clasificación</h3>
+                </div>
+
+                <div class="data-block" id="clasificacion-data-display">
+                    <p class="highlight-info">Kilos Totales Cosechados (Acumulado): <span
+                            id="cosecha-kilos-total-display">0.00</span> KG</p>
+                    <p class="highlight-info" id="clasificacion-restante-container">
+                        Kilos **PENDIENTES** de Clasificar: <span id="cosecha-kilos-restante-display">0.00</span> KG
+                    </p>
+                    <p style="margin-top: 10px; font-style: italic;" id="last-classification-date">Última Clasificación:
+                        Nunca</p>
+
+                    <form id="registro-clasificacion-form" class="grid-form">
+                        <label for="kilos-cenicafe">Kilos Cenicafé a Clasificar:</label>
+                        <input type="number" id="kilos-cenicafe" min="0" step="0.01" required
+                            placeholder="Máx. Kilos Pendientes">
+
+                        <label for="kilos-variedad-colombia">Kilos Variedad Colombia a Clasificar:</label>
+                        <input type="number" id="kilos-variedad-colombia" min="0" step="0.01" required
+                            placeholder="Máx. Kilos Pendientes">
+
+                        <button type="submit" class="btn-success grid-col-span-2" id="btn-registrar-clasificacion"
+                            disabled>Registrar Clasificación Pendiente</button>
+                    </form>
+                </div>
+
+                <div class="data-block" style="margin-top: 30px;">
+                    <h3>Historial de Clasificaciones Realizadas</h3>
+                    <table id="clasificacion-historial-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha y Hora</th>
+                                <th>Cenicafé (kg)</th>
+                                <th>Variedad Colombia (kg)</th>
+                                <th>Total Clasificado (kg)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section id="acerca-view" class="view" style="display: none;">
+                <h2>Acerca de Nosotros</h2>
+
+                <div class="carousel-container">
+                    <div class="carousel-slide-track" id="carousel-slide-track">
+                        <img src="img/1.jpg" alt="logo de la pagina">
+                        <img src="img/2.jpg" alt="Finca de Café">
+                        <img src="img/3.jpg" alt="Flor de Café">
+                        <img src="img/4.jpg" alt="Flor de Café de cerca">
+                        <img src="img/5.jpg" alt="Granos de Café Cosechados">
+                        <img src="img/6.jpg" alt="Producto Final">
+                    </div>
+                    <button class="carousel-btn prev" id="prev-slide-btn">&#10094;</button>
+                    <button class="carousel-btn next" id="next-slide-btn">&#10095;</button>
+                </div>
+
+                <div class="contenedor-info-acerca">
+
+                    <div class="info-seccion-acerca">
+                        <h3 class="titulo-centrado">Nuestra Misión y Calidad</h3>
+                        <p>Llevar el sabor auténtico del café colombiano a cada taza, manteniendo procesos
+                            **tradicionales y sostenibles**. Nuestro compromiso es con el **grano rojo seleccionado a
+                            mano**, cultivado con dedicación en la Finca Horizonte de Neiva.</p>
+                        <ul>
+                            <li>Procesos tradicionales y sostenibles.</li>
+                            <li>Secado cuidadoso del grano.</li>
+                            <li>Grano rojo seleccionado a mano.</li>
+                        </ul>
+                    </div>
+
+                    <div class="info-seccion-acerca">
+                        <h3 class="titulo-centrado">Nuestra Visión Cafetera</h3>
+                        <p>Buscamos ser un referente de la tradición cafetera en Colombia, honrando la historia del
+                            café, desde su descubrimiento en Etiopía hasta su consolidación como pilar económico en
+                            nuestra tierra.</p>
+                        <p style="margin-top: 15px; font-weight: bold;">Nuestro Lema:</p>
+                        <p><em>“Donde la tradición crece, el café florece.”</em></p>
+                    </div>
+
+                    <div class="info-seccion-acerca">
+                        <h3 class="titulo-centrado">Nuestros Valores: Nuestra Gente</h3>
+                        <p>La finca es impulsada por la **dedicación y el respeto** por el trabajo en equipo. Valoramos
+                            a nuestra comunidad y a cada uno de sus miembros, desde las familias que habitan el
+                            territorio hasta los 30 trabajadores y 2 choferes.</p>
+                        <p style="margin-top: 15px; font-weight: bold;">Nuestra Gente:</p>
+                        <ul>
+                            <li>30 trabajadores comprometidos.</li>
+                            <li>2 choferes que apoyan la logística.</li>
+                            <li>5 familias que cuidan el territorio.</li>
+                        </ul>
+                    </div>
+
+                </div>
+                <div class="seccion-persona">
+                    <img src="img/Dueño.jpg" alt="Foto de Don Ricardo, Dueño de la Finca" class="imagen-persona">
+                    <div class="info-persona">
+                        <h3 class="titulo-centrado" style="text-align: left !important; color: var(--color-oro-suave);">
+                            Edwin Andrades Guerrero</h3>
+                        <p>Don Edwin ha dedicado 14 años de su vida a cultivar con amor y respeto la Finca Horizonte de
+                            Neiva. Su liderazgo es la base de nuestros procesos tradicionales y sostenibles.</p>
+
+                        <h4 style="margin-top: 20px; color: var(--color-marron-oscuro);">Su Visión</h4>
+                        <p>Su visión se centra no solo en la producción de café de alta calidad, sino en el bienestar de
+                            su comunidad y en honrar la herencia cafetera. Él es el pilar que asegura que la calidad y
+                            la tradición lleguen a cada taza.</p>
+
+                        <h4 style="margin-top: 20px; color: var(--color-marron-oscuro);">Lema Personal</h4>
+                        <p style="font-style: italic;">"Mi compromiso es con la tierra y con la gente que la trabaja."
+                        </p>
+                    </div>
+                </div>
+                <div class="historia-cafe">
+                    <h3 class="titulo-centrado" style="margin-top: 30px;">Finca Horizonte de Neiva</h3>
+                    <p>Durante 14 años, la Finca Horizonte de Neiva ha trabajado con dedicación, amor por la tierra y
+                        respeto por las tradiciones cafeteras. Cada amanecer refleja el compromiso de una familia y una
+                        comunidad que han hecho del café su vida. Contamos con altura y clima ideales para un café de
+                        calidad.</p>
+
+                    <h4 style="margin-top: 20px; color: var(--color-marron-oscuro);">Nuestras Variedades</h4>
+                    <ul>
+                        <li><strong>Cenicafé 1</strong>: vigorosa, resistente y de alto rendimiento.</li>
+                        <li><strong>Variedad Colombia</strong>: sabor equilibrado y excelente adaptabilidad.</li>
+                    </ul>
+
+                    <h3 class="titulo-centrado" style="margin-top: 30px;">Historia del Café</h3>
+                    <p>La historia del café está entrelazada con la cultura y la economía global. Se dice que fue
+                        descubierto en Etiopía, cuando un pastor notó que sus cabras se volvían enérgicas después de
+                        comer unas bayas rojas.</p>
+                    <p>Su expansión al mundo árabe permitió que se popularizara en casas de oración y en las famosas
+                        "Qahveh Khaneh". Desde allí viajó a Europa y América, convirtiéndose en una bebida de
+                        innovación, conversación y unión social.</p>
+                    <p>En Colombia, el café es un pilar económico y cultural. Nuestro café honra esa tradición,
+                        cultivado con dedicación en la Finca Horizonte de Neiva, llevando el sabor auténtico de nuestra
+                        tierra a cada taza.</p>
+                </div>
+            </section>
+
+
+        </main>
+
+    </div>
+
+    <div id="custom-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="modal-close-btn">&times;</span>
+            <h3 id="modal-title"></h3>
+            <p id="modal-message"></p>
+            <button id="modal-accept-btn">Aceptar</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
