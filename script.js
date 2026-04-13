@@ -1,3 +1,7 @@
+﻿const supabaseUrl = 'https://xaefkukwkppjwwpljrnd.supabase.co';
+const supabaseKey = 'sb_publishable_oJ1FStBR0h5B49BCtIj4wQ_NqDj2Pen';
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
+
 let TRABAJADORES_TOTAL = 30; // 30 trabajadores
 const PRECIO_KG = 1000; // $1000 COP por kilogramo
 
@@ -128,24 +132,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Nueva función: cargar trabajadores desde la BD
     async function loadTrabajadoresFromDB() {
         try {
-            const response = await fetch('backend/trabajadores_list.php');
-            if (!response.ok) {
-                console.error('HTTP error', response.status);
-                showModal('Error', 'No se pudieron cargar los trabajadores desde el servidor.');
+            const { data: trabajadoresData, error: dbError } = await supabaseClient.from('trabajador').select('*').order('Id', { ascending: true });
+
+            if (dbError) {
+                console.error('API error', dbError);
+                showModal('Error', 'No se pudieron cargar los trabajadores desde Supabase.');
                 return;
             }
 
-            const data = await response.json();
-
-            if (!data.success) {
-                console.error('Error API:', data.message);
-                showModal('Error', data.message || 'Error al cargar trabajadores.');
-                return;
-            }
-
-            // data.trabajadores es un array con {Id, nombre, ...}
+            // trabajadoresData es un array con {Id, nombre, ...}
             nombresTrabajadores = {};
-            data.trabajadores.forEach(t => {
+            trabajadoresData.forEach(t => {
                 const id = String(t.Id);
                 nombresTrabajadores[id] = t.nombre;
             });
@@ -238,38 +235,26 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Crear objeto FormData para enviar al PHP
-        const formData = new FormData();
-        formData.append('username', user);
-        formData.append('password', pass);
-
         try {
-            const response = await fetch('backend/login.php', {
-                method: 'POST',
-                body: formData
-            });
+            const { data: usuarioData, error: loginError } = await supabaseClient
+                .from('usuarios')
+                .select('*')
+                .eq('usuario', user)
+                .single();
 
-            // Si el servidor respondió algo distinto de 200 OK
-            if (!response.ok) {
-                showModal('Error', 'Error al comunicarse con el servidor.');
-                console.error('HTTP error', response.status);
+            if (loginError || !usuarioData || usuarioData.contraseña !== pass) {
+                showModal('Error', 'Usuario o contraseña incorrectos. Por favor, intente de nuevo.');
                 return;
             }
 
-            const data = await response.json();
+            const nombreUsuario = usuarioData.usuario;
+            showModal('Éxito', `Inicio de Sesión Exitoso! Bienvenido ${nombreUsuario}.`);
 
-            if (data.success) {
-                const nombreUsuario = data.username || user;
-                showModal('Éxito', `Inicio de Sesión Exitoso! Bienvenido ${nombreUsuario}.`);
-
-                // Tu lógica actual de mostrar la app
-                document.getElementById('auth-view').style.display = 'none';
-                document.getElementById('main-app').style.display = 'grid';
-                showView('inicio');
-                updateStats();
-            } else {
-                showModal('Error', data.message || 'Usuario o contraseña incorrectos. Por favor, intente de nuevo.');
-            }
+            // Tu lógica actual de mostrar la app
+            document.getElementById('auth-view').style.display = 'none';
+            document.getElementById('main-app').style.display = 'grid';
+            showView('inicio');
+            updateStats();
 
         } catch (error) {
             console.error('Error en la petición:', error);
@@ -299,39 +284,40 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Ahora lo mandamos al backend, no a localStorage:
-        const formData = new FormData();
-        formData.append('username', user);
-        formData.append('password', pass);
-        formData.append('confirm_password', confirmPass);
-
         try {
-            const response = await fetch('backend/registro_login.php', {
-                method: 'POST',
-                body: formData
-            });
+            // Verificar si el usuario ya existe
+            const { data: existingUser } = await supabaseClient
+                .from('usuarios')
+                .select('*')
+                .eq('usuario', user)
+                .maybeSingle();
 
-            if (!response.ok) {
-                showModal('Error', 'Error al comunicarse con el servidor.');
-                console.error('HTTP error', response.status);
+            if (existingUser) {
+                showModal('Error', 'El usuario ya existe en Supabase.');
                 return;
             }
 
-            const data = await response.json();
+            // Insertar el nuevo usuario
+            const { data: newUser, error: regError } = await supabaseClient
+                .from('usuarios')
+                .insert([{ usuario: user, contraseña: pass }])
+                .select()
+                .single();
 
-            if (data.success) {
-                const nombreUsuario = data.username || user;
-                showModal('¡Registro Exitoso!', `Cuenta creada para el usuario: ${nombreUsuario}. Ingresando al sistema...`);
-
-                // Inicio de sesión automático (igual que tu lógica actual)
-                document.getElementById('register-form').reset();
-                document.getElementById('auth-view').style.display = 'none';
-                document.getElementById('main-app').style.display = 'grid';
-                showView('inicio');
-                updateStats();
-            } else {
-                showModal('Error', data.message || 'No se pudo registrar el usuario.');
+            if (regError || !newUser) {
+                showModal('Error', 'No se pudo registrar el usuario.');
+                return;
             }
+
+            const nombreUsuario = newUser.usuario;
+            showModal('¡Registro Exitoso!', `Cuenta creada para el usuario: ${nombreUsuario}. Ingresando al sistema...`);
+
+            // Inicio de sesión automático (igual que tu lógica actual)
+            document.getElementById('register-form').reset();
+            document.getElementById('auth-view').style.display = 'none';
+            document.getElementById('main-app').style.display = 'grid';
+            showView('inicio');
+            updateStats();
 
         } catch (error) {
             console.error('Error en la petición:', error);
@@ -355,46 +341,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // --- Helper para actualizar nombre en BD (cambiar nombre manualmente) ---
         async function actualizarTrabajadorEnBD(id, nombre) {
-            const formData = new FormData();
-            formData.append('id', id);
-            formData.append('nombre', nombre);
-            formData.append('accion', 'update');
+            const { data, error } = await supabaseClient
+                .from('trabajador')
+                .update({ nombre: nombre })
+                .eq('Id', id)
+                .select()
+                .single();
 
-            const response = await fetch('backend/trabajador_update.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error('HTTP error ' + response.status);
+            if (error || !data) {
+                throw new Error('Error al actualizar trabajador.');
             }
-
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.message || 'Error al actualizar trabajador.');
-            }
-            return data; // {success, id, nombre, message}
+            return { success: true, id: data.Id, nombre: data.nombre };
         }
 
         // --- NUEVO Helper: "eliminar" -> restablecer a "trabajador X (por defecto)" ---
         async function eliminarTrabajadorEnBD(id) {
-            const formData = new FormData();
-            formData.append('id', id);
+            const defaultName = `Trabajador ${id} (por defecto)`;
+            const { data, error } = await supabaseClient
+                .from('trabajador')
+                .update({ nombre: defaultName })
+                .eq('Id', id)
+                .select()
+                .single();
 
-            const response = await fetch('backend/trabajador_delete.php', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                throw new Error('HTTP error ' + response.status);
+            if (error || !data) {
+                throw new Error('Error al eliminar (resetear) trabajador.');
             }
-
-            const data = await response.json();
-            if (!data.success) {
-                throw new Error(data.message || 'Error al eliminar (resetear) trabajador.');
-            }
-            return data; // {success, id, nombre, message}
+            return { success: true, id: data.Id, nombre: data.nombre };
         }
 
         // --- Submit: cambiar nombre del trabajador ---
@@ -546,21 +519,29 @@ document.getElementById('produccion-form').addEventListener('submit', async func
     formData.append('kilos', kilos);
 
     try {
-        const response = await fetch('backend/produccion_registrar.php', {
-            method: 'POST',
-            body: formData
-        });
+        const { data: trabajadorActual, error: fetchError } = await supabaseClient
+            .from('trabajador')
+            .select('*')
+            .eq('Id', idTrabajador)
+            .single();
 
-        if (!response.ok) {
-            console.error('HTTP error', response.status);
-            showModal('Error', 'Error al comunicarse con el servidor al registrar la producción.');
+        if (fetchError || !trabajadorActual) {
+            console.error('Supabase error', fetchError);
+            showModal('Error', 'Error al comunicarse con la base de datos al registrar la producción.');
             return;
         }
 
-        const data = await response.json();
+        const nuevosKilos = (trabajadorActual.kilos_cosechados || 0) + kilos;
+        const nuevoPagoPendiente = (trabajadorActual.pago_pendientekg || 0) + (kilos * PRECIO_KG);
 
-        if (!data.success) {
-            showModal('Error', data.message || 'No se pudo registrar la producción en la base de datos.');
+        const { error: dbError } = await supabaseClient
+            .from('trabajador')
+            .update({ kilos_cosechados: nuevosKilos, pago_pendientekg: nuevoPagoPendiente })
+            .eq('Id', idTrabajador);
+
+        if (dbError) {
+            console.error('Supabase error', dbError);
+            showModal('Error', 'No se pudo registrar la producción en la base de datos.');
             return;
         }
 
@@ -627,24 +608,16 @@ async function updateStats() {
     let totalKilosCosechados = 0;
 
     try {
-        const response = await fetch('backend/estadisticas_globales.php');
+        const { data, error } = await supabaseClient.from('trabajador').select('kilos_cosechados');
 
-        if (response.ok) {
-            const data = await response.json();
-
-            if (data.success) {
-                totalKilosCosechados = parseFloat(data.totalKilosCosechados) || 0;
-            } else {
-                console.error('Error en estadísticas backend:', data.message);
-                // Fallback: usar lo que tenemos en el navegador
-                totalKilosCosechados = getGlobalProductionTotal();
-            }
-        } else {
-            console.error('HTTP error al obtener estadísticas:', response.status);
+        if (error) {
+            console.error('Error al obtener estadísticas de Supabase:', error);
             totalKilosCosechados = getGlobalProductionTotal();
+        } else {
+            totalKilosCosechados = data.reduce((sum, el) => sum + (el.kilos_cosechados || 0), 0);
         }
     } catch (error) {
-        console.error('Error al obtener estadísticas del servidor:', error);
+        console.error('Error al obtener estadísticas de Supabase:', error);
         totalKilosCosechados = getGlobalProductionTotal();
     }
 
@@ -677,31 +650,30 @@ async function renderNominaReporte() {
     reporteTableBody.innerHTML = '';
 
     try {
-        const response = await fetch('backend/nomina_reporte.php');
-        if (!response.ok) {
-            console.error('HTTP error en nómina:', response.status);
+        const { data: trabajadoresData, error: dbError } = await supabaseClient
+            .from('trabajador')
+            .select('*')
+            .order('Id', { ascending: true });
+
+        if (dbError) {
+            console.error('API error en nómina:', dbError);
             showModal('Error', 'No se pudo cargar la nómina desde el servidor.');
             return;
         }
 
-        const data = await response.json();
-        if (!data.success) {
-            console.error('Error API nómina:', data.message);
-            showModal('Error', data.message || 'Error al cargar la nómina.');
-            return;
-        }
-
-        const trabajadores = data.trabajadores || [];
+        const trabajadores = trabajadoresData || [];
 
         trabajadores.forEach(t => {
-            const id = String(t.id);
+            const id = String(t.Id);
             const nombre = t.nombre || nombresTrabajadores[id] || `Trabajador ${id}`;
 
             // 🟢 Total de kilos que ha hecho el trabajador
-            const kilosTotales = parseFloat(t.kilos_totales) || 0;
+            const kilosTotales = parseFloat(t.kilos_cosechados) || 0;
 
-            // 🔒 Kilos pendientes (solo para cálculo interno, NO se muestran como columna)
-            const kilosPendientes = parseFloat(t.kilos_pendientes) || 0;
+            // 🔒 Kilos pendientes se determinan calculando totales vs pagados (desde history/pagoTrabajadores)
+            // Wait, their backend `nomina_reporte.php` returned `kilos_totales` and `kilos_pendientes`
+            const kilosPagadosPrevios = pagosTrabajadores[id] || 0;
+            const kilosPendientes = kilosTotales - kilosPagadosPrevios;
             const pagoPendiente = kilosPendientes * PRECIO_KG;
 
             const row = reporteTableBody.insertRow();
@@ -775,25 +747,16 @@ async function markAsPaid(id, totalKilos) {
 
     const pagoRealizado = kilosPendientes * PRECIO_KG;
 
-    // 1. Avisar al backend que pagamos TODOS los kilos pendientes
-    const formData = new FormData();
-    formData.append('id', id);
-
+    // 1. Avisar a Supabase que pagamos TODOS los kilos pendientes
     try {
-        const response = await fetch('backend/trabajador_pagar.php', {
-            method: 'POST',
-            body: formData
-        });
+        const { error: dbError } = await supabaseClient
+            .from('trabajador')
+            .update({ pago_pendientekg: 0 })
+            .eq('Id', id);
 
-        if (!response.ok) {
-            console.error('HTTP error al pagar:', response.status);
+        if (dbError) {
+            console.error('Supabase error al pagar:', dbError);
             showModal('Error', 'No se pudo registrar el pago en el servidor.');
-            return;
-        }
-
-        const data = await response.json();
-        if (!data.success) {
-            showModal('Error', data.message || 'No se pudo registrar el pago.');
             return;
         }
 
@@ -868,31 +831,34 @@ document.getElementById('chofer-pago-form').addEventListener('submit', async fun
         return;
     }
 
-    const formData = new FormData();
-    formData.append('chofer', chofer);
-    formData.append('viajes', viajes);
-    formData.append('tarifa', tarifa);
+    const idChofer = parseInt(chofer.split('-')[1]);
 
     try {
-        const response = await fetch('backend/chofer_registrar.php', {
-            method: 'POST',
-            body: formData
-        });
+        const { data: choferActual, error: fetchError } = await supabaseClient
+            .from('chofer')
+            .select('*')
+            .eq('Id', idChofer)
+            .single();
 
-        if (!response.ok) {
-            console.error('HTTP error', response.status);
-            showModal('Error', 'Error al comunicarse con el servidor al registrar el pago del chofer.');
+        if (fetchError || !choferActual) {
+            showModal('Error', 'Error al comunicarse con la base de datos de choferes.');
             return;
         }
 
-        const data = await response.json();
+        const nuevosViajes = (choferActual.numero_viajes || 0) + viajes;
 
-        if (!data.success) {
-            showModal('Error', data.message || 'No se pudo registrar el pago del chofer.');
+        const { error: dbError } = await supabaseClient
+            .from('chofer')
+            .update({ numero_viajes: nuevosViajes, tarifa: tarifa })
+            .eq('Id', idChofer);
+
+        if (dbError) {
+            showModal('Error', 'No se pudo registrar el pago del chofer en la base de datos.');
             return;
         }
 
-        const pagoTotal = data.pago_total;
+        const pagoTotal = viajes * tarifa;
+        const data = { chofer: choferActual.nombre, viajes: viajes };
 
         showModal(
             'Éxito',
@@ -966,30 +932,22 @@ document.getElementById('generar-reporte-choferes-btn').addEventListener('click'
     const data = [headers];
 
     try {
-        const response = await fetch('backend/chofer_list.php');
-        if (!response.ok) {
-            console.error('HTTP error al cargar choferes:', response.status);
-            showModal('Error', 'No se pudo cargar el reporte de choferes desde el servidor.');
+        const { data: registros, error: dbError } = await supabaseClient.from('chofer').select('*');
+
+        if (dbError) {
+            console.error('API error choferes:', dbError);
+            showModal('Error', 'No se pudo cargar el reporte de choferes desde Supabase.');
             return;
         }
 
-        const result = await response.json();
-        if (!result.success) {
-            console.error('Error API choferes:', result.message);
-            showModal('Error', result.message || 'Error al cargar el reporte de choferes.');
-            return;
-        }
-
-        const registros = result.registros || [];
-
-        registros.forEach(reg => {
-            const viajes = reg.viajes || 0;
+        (registros || []).forEach(reg => {
+            const viajes = reg.numero_viajes || 0;
             const tarifa = reg.tarifa || 0;
             const total = viajes * tarifa;
 
             data.push([
-                reg.id,
-                reg.chofer,
+                reg.Id,
+                reg.nombre,
                 viajes,
                 tarifa.toFixed(2),
                 total.toFixed(2)
@@ -1013,22 +971,20 @@ document.getElementById('generar-reporte-choferes-btn').addEventListener('click'
 // Cargar gastos desde la base de datos
 async function loadGastosFromDB() {
     try {
-        const response = await fetch('backend/gastos_list.php');
-        if (!response.ok) {
-            console.error('HTTP error al cargar gastos:', response.status);
-            showModal('Error', 'No se pudieron cargar los gastos desde el servidor.');
+        const { data: gastosDb, error: dbError } = await supabaseClient.from('gestion_gastos').select('*');
+        if (dbError) {
+            console.error('API error gastos:', dbError);
+            showModal('Error', 'No se pudieron cargar los gastos desde Supabase.');
             return;
         }
 
-        const data = await response.json();
-        if (!data.success) {
-            console.error('Error API gastos:', data.message);
-            showModal('Error', data.message || 'Error al cargar los gastos.');
-            return;
-        }
-
-        // Guardamos los gastos que vienen del backend en memoria
-        gastosData = data.gastos || [];
+        // Guardamos los gastos que vienen de Supabase en memoria
+        gastosData = (gastosDb || []).map(g => ({
+            id: g.Id,
+            fecha: g.fecha,
+            descripcion: g.descripcion,
+            monto: g.monto
+        }));
         renderGastosTable();
     } catch (error) {
         console.error('Error al cargar gastos:', error);
@@ -1078,27 +1034,14 @@ if (registroGastoForm) {
             return;
         }
 
-        const formData = new FormData();
-        formData.append('descripcion', descripcion);
-        formData.append('monto', monto);
-        formData.append('fecha', fecha);
-
         try {
-            const response = await fetch('backend/gasto_registrar.php', {
-                method: 'POST',
-                body: formData
-            });
+            const { error: dbError } = await supabaseClient
+                .from('gestion_gastos')
+                .insert([{ descripcion: descripcion, monto: monto, fecha: fecha }]);
 
-            if (!response.ok) {
-                console.error('HTTP error al registrar gasto:', response.status);
-                showModal('Error', 'Error al comunicarse con el servidor al registrar el gasto.');
-                return;
-            }
-
-            const data = await response.json();
-
-            if (!data.success) {
-                showModal('Error', data.message || 'No se pudo registrar el gasto.');
+            if (dbError) {
+                console.error('Supabase error al registrar gasto:', dbError);
+                showModal('Error', 'No se pudo registrar el gasto en la base de datos.');
                 return;
             }
 
@@ -1126,28 +1069,21 @@ document.getElementById('generar-reporte-gastos-btn').addEventListener('click', 
     const data = [headers];
 
     try {
-        const response = await fetch('backend/gastos_list.php');
-        if (!response.ok) {
-            console.error('HTTP error al cargar gastos para CSV:', response.status);
-            showModal('Error', 'No se pudo cargar el reporte de gastos desde el servidor.');
+        const { data: gastosDb, error: dbError } = await supabaseClient.from('gestion_gastos').select('*');
+        if (dbError) {
+            console.error('API error gastos CSV:', dbError);
+            showModal('Error', 'No se pudo cargar el reporte de gastos desde Supabase.');
             return;
         }
 
-        const result = await response.json();
-        if (!result.success) {
-            console.error('Error API gastos CSV:', result.message);
-            showModal('Error', result.message || 'Error al generar el reporte de gastos.');
-            return;
-        }
-
-        const gastos = result.gastos || [];
+        const gastos = gastosDb || [];
 
         gastos.forEach(reg => {
             data.push([
-                reg.id,
+                reg.Id,
                 reg.fecha,
                 reg.descripcion,
-                reg.monto.toFixed(2)
+                (reg.monto || 0).toFixed(2)
             ]);
         });
 
@@ -1190,7 +1126,7 @@ function renderHistorialClasificacion() {
 
         const cenicafe = parseFloat(registro.kilos_cenicafe) || 0;
         const variedad = parseFloat(registro.kilos_colombia) || 0;
-        const total   = parseFloat(registro.total_clasificado) || 0;
+        const total = parseFloat(registro.total_clasificado) || 0;
 
         row.insertCell().textContent = registro.fecha; // YYYY-MM-DD
         row.insertCell().textContent = cenicafe.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

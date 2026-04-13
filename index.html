@@ -13,14 +13,13 @@
 
 <body>
 
-    #aqui esta la prueba de  todo
     <div id="app-container">
 
         <section id="auth-view" class="active">
             <div id="auth-box">
                 <img src="img/logo.png" alt="Logo de Café" id="auth-logo">
                 <h2>Acceso al Sistema</h2>
-                <form id="login-form" method="POST" action="backend/login.php">
+                <form id="login-form">
                     <input type="text" id="username" name="username" placeholder="Usuario" required>
                     <input type="password" id="password" name="password" placeholder="Contraseña" required>
                     <button type="submit">Iniciar Sesión</button>
@@ -386,7 +385,8 @@
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="script.js?v=3" charset="UTF-8"></script>
 </body>
 
 </html>

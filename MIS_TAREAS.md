@@ -8,3 +8,7 @@ Este archivo es para que organices tus propios pasos y tareas pendientes. No afe
 - [ ] hacer los metodos para la base de datos
 - [ ] convertir los datos de la base de datos a json
 
+
+
+contraseña del supabase: ryEPNSPkKDcK47KJ
+nombre del proyecto: finca_click_SB
