@@ -1,5 +1,5 @@
-﻿const supabaseUrl = 'https://xaefkukwkppjwwpljrnd.supabase.co';
-const supabaseKey = 'sb_publishable_oJ1FStBR0h5B49BCtIj4wQ_NqDj2Pen';
+﻿const supabaseUrl = 'https://cmqdynqebhpkzewcqpdg.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcWR5bnFlYmhwa3pld2NxcGRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzY1NjQsImV4cCI6MjA5MjYxMjU2NH0.4xTm-BEBuGAMUIrmZB4iXt2uH49YeTlHd6K28xKEJEw';
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 let TRABAJADORES_TOTAL = 30; // 30 trabajadores
