@@ -1,39 +1,17 @@
-﻿const supabaseUrl = 'https://cmqdynqebhpkzewcqpdg.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNtcWR5bnFlYmhwa3pld2NxcGRnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzY1NjQsImV4cCI6MjA5MjYxMjU2NH0.4xTm-BEBuGAMUIrmZB4iXt2uH49YeTlHd6K28xKEJEw';
+const supabaseUrl = 'https://hfkqihmhejipmyhemzys.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhma3FpaG1oZWppcG15aGVtenlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxMjIxNTgsImV4cCI6MjA5MjY5ODE1OH0.ldH60pDU8ms8SmyEJ0NODqB4kv1qk541cnH5CJNaJqE';
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
 
-let TRABAJADORES_TOTAL = 30; // 30 trabajadores
-const PRECIO_KG = 1000; // $1000 COP por kilogramo
+const PRECIO_KG = 1000;
 
-// --- CREDENCIALES Y CLAVES DE ALMACENAMIENTO ---
-const ADMIN_USER = 'admin';
-const ADMIN_PASS = 'admin123';
-const USER_KEY = 'userCredentials'; // Clave para guardar usuarios
-
-// --- SIMULACIÓN DE BASE DE DATOS LOCAL (localStorage) ---
-let produccionData = JSON.parse(localStorage.getItem('produccionData')) || [];
+// --- ESTADO GLOBAL ---
 let nombresTrabajadores = {};
-let choferesData = JSON.parse(localStorage.getItem('choferesData')) || [];
-let gastosData = [];
-let pagosTrabajadores = JSON.parse(localStorage.getItem('pagosTrabajadores')) || {};
-
-// --- VARIABLES GLOBALES PARA LA CLASIFICACIÓN (desde BD) ---
-// Se rellenan desde backend/clasificacion_resumen.php
-let kilosTotalClasificados = 0;
+let produccionData = [];
 let historialClasificacion = [];
-let totalCosechadoClasificacion = 0; // total cosechado que usamos en la vista de clasificación
+let kilosTotalClasificados = 0;
+let sessionActive = false;
 
-
-
-// Cargar credenciales guardadas y asegurar que el admin existe
-let userCredentials = JSON.parse(localStorage.getItem(USER_KEY)) || {};
-if (Object.keys(userCredentials).length === 0 || !userCredentials[ADMIN_USER]) {
-    userCredentials[ADMIN_USER] = ADMIN_PASS;
-    localStorage.setItem(USER_KEY, JSON.stringify(userCredentials));
-}
-
-
-// --- LÓGICA DE MODAL (Reemplaza alert()) ---
+// --- LÓGICA DE MODAL ---
 const customModal = document.getElementById('custom-modal');
 const modalTitle = document.getElementById('modal-title');
 const modalMessage = document.getElementById('modal-message');
@@ -41,1211 +19,461 @@ const modalCloseBtn = document.getElementById('modal-close-btn');
 const modalAcceptBtn = document.getElementById('modal-accept-btn');
 
 function showModal(title, message) {
+    if (!customModal) {
+        alert(`${title}: ${message}`);
+        return;
+    }
     modalTitle.textContent = title;
-    modalMessage.innerHTML = message; // Usamos innerHTML por si el historial pasa HTML
+    modalMessage.innerHTML = message; 
     customModal.classList.add('visible');
 }
 
 function closeModal() {
     customModal.classList.remove('visible');
-    // Restaurar el contenido del modal-message a texto plano después de cerrar
-    document.getElementById('modal-message').innerHTML = '';
+    modalMessage.innerHTML = '';
 }
 
-modalCloseBtn.addEventListener('click', closeModal);
-modalAcceptBtn.addEventListener('click', closeModal);
-
-window.addEventListener('click', (event) => {
-    if (event.target === customModal) {
-        closeModal();
-    }
-});
+[modalCloseBtn, modalAcceptBtn].forEach(btn => btn?.addEventListener('click', closeModal));
 
 // --- LÓGICA DEL CARRUSEL ---
 const carouselTrack = document.getElementById('carousel-slide-track');
 const prevBtn = document.getElementById('prev-slide-btn');
 const nextBtn = document.getElementById('next-slide-btn');
 let currentSlide = 0;
-let slideWidth = 0;
-const totalSlides = 5;
-
-function updateSlideWidth() {
-    if (carouselTrack && carouselTrack.firstElementChild) {
-        slideWidth = carouselTrack.firstElementChild.clientWidth;
-    }
-}
+const totalSlides = 6; // Ajustado a 6 imágenes
 
 function showSlide(index) {
-    updateSlideWidth();
-
-    if (index >= totalSlides) {
-        currentSlide = 0;
-    } else if (index < 0) {
-        currentSlide = totalSlides - 1;
-    } else {
-        currentSlide = index;
-    }
-
+    if (!carouselTrack) return;
+    const slideWidth = carouselTrack.firstElementChild?.clientWidth || 0;
+    if (index >= totalSlides) currentSlide = 0;
+    else if (index < 0) currentSlide = totalSlides - 1;
+    else currentSlide = index;
     carouselTrack.style.transform = `translateX(${-currentSlide * slideWidth}px)`;
 }
 
-function nextSlide() {
-    showSlide(currentSlide + 1);
-}
+nextBtn?.addEventListener('click', () => showSlide(currentSlide + 1));
+prevBtn?.addEventListener('click', () => showSlide(currentSlide - 1));
+window.addEventListener('resize', () => showSlide(currentSlide));
 
-function prevSlide() {
-    showSlide(currentSlide - 1);
-}
+// --- INICIO Y NAVEGACIÓN ---
 
-if (nextBtn && prevBtn) {
-    nextBtn.addEventListener('click', nextSlide);
-    prevBtn.addEventListener('click', prevSlide);
-}
-
-
-window.addEventListener('resize', () => {
-    updateSlideWidth();
-    showSlide(currentSlide);
-});
-// -------------------------------------------------------------------
-
-// --- LÓGICA DE INICIO DE LA APLICACIÓN (Auth y Navegación) ---
-
-document.addEventListener('DOMContentLoaded', () => {
-    // Select de trabajadores (se llenará desde la BD)
-    const trabajadorSelect = document.getElementById('trabajador-select');
-
-    function updateTrabajadorSelect() {
-        if (!trabajadorSelect) return;
-        trabajadorSelect.innerHTML = '<option value="">-- Elige un trabajador --</option>';
-
-        // Recorremos los trabajadores que llegaron desde la BD
-        Object.keys(nombresTrabajadores).forEach(id => {
-            const nombre = nombresTrabajadores[id] || `Trabajador ${id}`;
-            const option = document.createElement('option');
-            option.value = id;
-            option.textContent = `${id} - ${nombre}`;
-            trabajadorSelect.appendChild(option);
-        });
+document.addEventListener('DOMContentLoaded', async () => {
+    const savedSession = sessionStorage.getItem('cafe_aromas_session');
+    if (savedSession) {
+        sessionActive = true;
+        document.getElementById('auth-view').style.display = 'none';
+        document.getElementById('main-app').style.display = 'grid';
+        showView('inicio');
     }
 
-    // Nueva función: cargar trabajadores desde la BD
-    async function loadTrabajadoresFromDB() {
-        try {
-            const { data: trabajadoresData, error: dbError } = await supabaseClient.from('trabajador').select('*').order('Id', { ascending: true });
+    await loadInitialData();
 
-            if (dbError) {
-                console.error('API error', dbError);
-                showModal('Error', 'No se pudieron cargar los trabajadores desde Supabase.');
-                return;
-            }
-
-            // trabajadoresData es un array con {Id, nombre, ...}
-            nombresTrabajadores = {};
-            trabajadoresData.forEach(t => {
-                const id = String(t.Id);
-                nombresTrabajadores[id] = t.nombre;
-            });
-
-            TRABAJADORES_TOTAL = Object.keys(nombresTrabajadores).length;
-
-            // Opcional: copia en localStorage
-            localStorage.setItem('nombresTrabajadores', JSON.stringify(nombresTrabajadores));
-
-            // Actualizar UI que depende de trabajadores
-            updateTrabajadorSelect();
-            cargarListaTrabajadores();
-            renderNominaReporte();
-            updateStats();
-        } catch (error) {
-            console.error('Error al cargar trabajadores:', error);
-            showModal('Error', 'Ocurrió un error al cargar los trabajadores.');
-        }
-    }
-
-    // Llamamos a la carga desde BD al iniciar
-    loadTrabajadoresFromDB();
-
-
-    // Función para cambiar de vista (Se mueve al inicio para usarla)
-    function showView(viewName) {
-        document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
-        const targetView = document.getElementById(viewName + '-view');
-        if (targetView) {
-            targetView.style.display = 'block';
-        }
-    }
-
-
-    // Eventos de Navegación
+    // Navegación optimizada
     document.querySelectorAll('.nav-link').forEach(link => {
-        link.addEventListener('click', function (e) {
+        link.addEventListener('click', async function (e) {
             e.preventDefault();
+            if (!sessionActive) return; 
+
             const viewName = this.getAttribute('data-view');
             showView(viewName);
 
             document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
             this.classList.add('active');
 
-            if (viewName === 'inventario') {
-                renderProduccionTable();
-            } else if (viewName === 'calcular') {
-                renderNominaReporte();
-            } else if (viewName === 'inicio') {
-                updateStats();
-            } else if (viewName === 'gestion-trabajadores') {
-                cargarListaTrabajadores();
-            } else if (viewName === 'gastos') {
-                loadGastosFromDB();
-            } else if (viewName === 'clasificacion') {
-                updateClasificacionView(); // Llama a la nueva función de inicialización
-            } else if (viewName === 'acerca') {
-                setTimeout(() => {
-                    updateSlideWidth();
-                    showSlide(0);
-                }, 50);
-            }
+            // Carga bajo demanda
+            const actions = {
+                'inventario': loadProduccionFromDB,
+                'calcular': renderNominaReporte,
+                'inicio': updateStats,
+                'gestion-trabajadores': cargarListaTrabajadoresUI,
+                'gastos': loadGastosFromDB,
+                'clasificacion': loadClasificacionFromDB
+            };
+            if (actions[viewName]) await actions[viewName]();
         });
     });
 
-    renderProduccionTable();
+    // Auth Listeners
+    document.getElementById('login-form')?.addEventListener('submit', handleLogin);
+    document.getElementById('register-form')?.addEventListener('submit', handleRegister);
+    document.getElementById('logout-btn')?.addEventListener('click', handleLogout);
+
+    const toggleAuth = (showRegister) => {
+        document.getElementById('login-form').style.display = showRegister ? 'none' : 'block';
+        document.getElementById('register-form').style.display = showRegister ? 'block' : 'none';
+    };
+    document.getElementById('show-register')?.addEventListener('click', (e) => { e.preventDefault(); toggleAuth(true); });
+    document.getElementById('show-login')?.addEventListener('click', (e) => { e.preventDefault(); toggleAuth(false); });
+
+    // Reportes
+    document.getElementById('generar-reporte-cosecha-btn')?.addEventListener('click', () => downloadCSV('reporte_cosecha.csv', 'reporte-cosecha-table'));
+    document.getElementById('generar-reporte-choferes-btn')?.addEventListener('click', async () => {
+        const { data } = await supabaseClient.from('chofer').select('*');
+        downloadDataAsCSV('reporte_choferes.csv', ['ID', 'Nombre', 'Viajes', 'Tarifa', 'Total'], data.map(c => [c.Id, c.nombre, c.numero_viajes, c.tarifa, c.numero_viajes * c.tarifa]));
+    });
+    document.getElementById('generar-reporte-gastos-btn')?.addEventListener('click', () => downloadCSV('reporte_gastos.csv', 'gastos-table'));
+});
+
+async function loadInitialData() {
+    await Promise.all([loadTrabajadoresFromDB(), loadChoferesFromDB()]);
     updateStats();
-
-    // Eventos de Auth (Simulación)
-    document.getElementById('show-register').addEventListener('click', (e) => {
-        e.preventDefault();
-        document.getElementById('login-form').style.display = 'none';
-        document.getElementById('register-form').style.display = 'block';
-    });
-    document.getElementById('show-login').addEventListener('click', (e) => {
-        e.preventDefault();
-        document.getElementById('login-form').style.display = 'block';
-        document.getElementById('register-form').style.display = 'none';
-    });
-
-    // === LÓGICA DE INICIO DE SESIÓN (con PHP + MySQL) ===
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const user = document.getElementById('username').value.trim();
-        const pass = document.getElementById('password').value;
-
-        if (!user || !pass) {
-            showModal('Error', 'Por favor, completa todos los campos.');
-            return;
-        }
-
-        try {
-            const { data: usuarioData, error: loginError } = await supabaseClient
-                .from('usuarios')
-                .select('*')
-                .eq('usuario', user)
-                .single();
-
-            if (loginError || !usuarioData || usuarioData.contraseña !== pass) {
-                showModal('Error', 'Usuario o contraseña incorrectos. Por favor, intente de nuevo.');
-                return;
-            }
-
-            const nombreUsuario = usuarioData.usuario;
-            showModal('Éxito', `Inicio de Sesión Exitoso! Bienvenido ${nombreUsuario}.`);
-
-            // Tu lógica actual de mostrar la app
-            document.getElementById('auth-view').style.display = 'none';
-            document.getElementById('main-app').style.display = 'grid';
-            showView('inicio');
-            updateStats();
-
-        } catch (error) {
-            console.error('Error en la petición:', error);
-            showModal('Error', 'Ocurrió un error inesperado. Intenta nuevamente.');
-        }
-    });
-
-
-    // === LÓGICA DE REGISTRO (con PHP + MySQL) ===
-    document.getElementById('register-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-
-        const user = document.querySelector('#register-form input:nth-child(1)').value.trim();
-        const pass = document.querySelector('#register-form input:nth-child(2)').value;
-        const confirmPass = document.querySelector('#register-form input:nth-child(3)').value;
-
-        if (user.length < 3) {
-            showModal('Error', 'El nombre de usuario debe tener al menos 3 caracteres.');
-            return;
-        }
-        if (pass !== confirmPass) {
-            showModal('Error', 'La contraseña y la confirmación no coinciden.');
-            return;
-        }
-        if (pass.length < 6) {
-            showModal('Error', 'La contraseña debe tener al menos 6 caracteres.');
-            return;
-        }
-
-        try {
-            // Verificar si el usuario ya existe
-            const { data: existingUser } = await supabaseClient
-                .from('usuarios')
-                .select('*')
-                .eq('usuario', user)
-                .maybeSingle();
-
-            if (existingUser) {
-                showModal('Error', 'El usuario ya existe en Supabase.');
-                return;
-            }
-
-            // Insertar el nuevo usuario
-            const { data: newUser, error: regError } = await supabaseClient
-                .from('usuarios')
-                .insert([{ usuario: user, contraseña: pass }])
-                .select()
-                .single();
-
-            if (regError || !newUser) {
-                showModal('Error', 'No se pudo registrar el usuario.');
-                return;
-            }
-
-            const nombreUsuario = newUser.usuario;
-            showModal('¡Registro Exitoso!', `Cuenta creada para el usuario: ${nombreUsuario}. Ingresando al sistema...`);
-
-            // Inicio de sesión automático (igual que tu lógica actual)
-            document.getElementById('register-form').reset();
-            document.getElementById('auth-view').style.display = 'none';
-            document.getElementById('main-app').style.display = 'grid';
-            showView('inicio');
-            updateStats();
-
-        } catch (error) {
-            console.error('Error en la petición:', error);
-            showModal('Error', 'Ocurrió un error inesperado. Intenta nuevamente.');
-        }
-    });
-
-
-    document.getElementById('logout-btn').addEventListener('click', () => {
-        showModal('Sesión Cerrada', 'Ha cerrado sesión exitosamente.');
-        document.getElementById('main-app').style.display = 'none';
-        document.getElementById('auth-view').style.display = 'flex';
-        document.getElementById('login-form').reset();
-    });
-
-    // --- LÓGICA DE GESTIÓN DE TRABAJADORES (CRUD) ---
-    const gestionarTrabajadorForm = document.getElementById('gestionar-trabajador-form');
-    const btnEliminar = document.getElementById('btn-eliminar-trabajador');
-
-    if (gestionarTrabajadorForm && btnEliminar) {
-
-        // --- Helper para actualizar nombre en BD (cambiar nombre manualmente) ---
-        async function actualizarTrabajadorEnBD(id, nombre) {
-            const { data, error } = await supabaseClient
-                .from('trabajador')
-                .update({ nombre: nombre })
-                .eq('Id', id)
-                .select()
-                .single();
-
-            if (error || !data) {
-                throw new Error('Error al actualizar trabajador.');
-            }
-            return { success: true, id: data.Id, nombre: data.nombre };
-        }
-
-        // --- NUEVO Helper: "eliminar" -> restablecer a "trabajador X (por defecto)" ---
-        async function eliminarTrabajadorEnBD(id) {
-            const defaultName = `Trabajador ${id} (por defecto)`;
-            const { data, error } = await supabaseClient
-                .from('trabajador')
-                .update({ nombre: defaultName })
-                .eq('Id', id)
-                .select()
-                .single();
-
-            if (error || !data) {
-                throw new Error('Error al eliminar (resetear) trabajador.');
-            }
-            return { success: true, id: data.Id, nombre: data.nombre };
-        }
-
-        // --- Submit: cambiar nombre del trabajador ---
-        gestionarTrabajadorForm.addEventListener('submit', async function (e) {
-            e.preventDefault();
-            const idInput = document.getElementById('trabajador-id-input');
-            const nombreInput = document.getElementById('trabajador-nombre-input');
-
-            const id = parseInt(idInput.value, 10);
-            const nombre = nombreInput.value.trim();
-
-            if (!Number.isInteger(id) || id <= 0 || id > TRABAJADORES_TOTAL) {
-                showModal('Error', 'ID de trabajador no válido.');
-                return;
-            }
-            if (!nombre) {
-                showModal('Error', 'El nombre no puede estar vacío.');
-                return;
-            }
-
-            try {
-                const data = await actualizarTrabajadorEnBD(id, nombre);
-
-                const idStr = String(id);
-                nombresTrabajadores[idStr] = data.nombre;
-                localStorage.setItem('nombresTrabajadores', JSON.stringify(nombresTrabajadores));
-
-                showModal('Éxito', `Nombre del Trabajador ${id} actualizado a: ${data.nombre}`);
-
-                cargarListaTrabajadores();
-                // Actualizar select de trabajadores si existe
-                const trabajadorSelect = document.getElementById('trabajador-select');
-                if (trabajadorSelect) {
-                    trabajadorSelect.innerHTML = '<option value="">-- Elige un trabajador --</option>';
-                    Object.keys(nombresTrabajadores).forEach(key => {
-                        const nombreOpt = nombresTrabajadores[key] || `trabajador ${key} (por defecto)`;
-                        const option = document.createElement('option');
-                        option.value = key;
-                        option.textContent = `${key} - ${nombreOpt}`;
-                        trabajadorSelect.appendChild(option);
-                    });
-                }
-
-                idInput.value = '';
-                nombreInput.value = '';
-            } catch (error) {
-                console.error('Error actualizando trabajador:', error);
-                showModal('Error', error.message);
-            }
-        });
-
-        // --- Botón Eliminar: restablecer al nombre por defecto en BD ---
-        btnEliminar.addEventListener('click', async function () {
-            const idInput = document.getElementById('trabajador-id-input');
-            const id = parseInt(idInput.value, 10);
-
-            if (!Number.isInteger(id) || id <= 0 || id > TRABAJADORES_TOTAL) {
-                showModal('Error', 'ID de trabajador no válido.');
-                return;
-            }
-
-            try {
-                const data = await eliminarTrabajadorEnBD(id);
-
-                const idStr = String(id);
-                // Nombre devuelto por el backend: "trabajador X (por defecto)"
-                nombresTrabajadores[idStr] = data.nombre;
-                localStorage.setItem('nombresTrabajadores', JSON.stringify(nombresTrabajadores));
-
-                showModal('Éxito', `Nombre personalizado del Trabajador ${id} eliminado. Restablecido a "${data.nombre}".`);
-
-                cargarListaTrabajadores();
-
-                const trabajadorSelect = document.getElementById('trabajador-select');
-                if (trabajadorSelect) {
-                    trabajadorSelect.innerHTML = '<option value="">-- Elige un trabajador --</option>';
-                    Object.keys(nombresTrabajadores).forEach(key => {
-                        const nombreOpt = nombresTrabajadores[key] || `trabajador ${key} (por defecto)`;
-                        const option = document.createElement('option');
-                        option.value = key;
-                        option.textContent = `${key} - ${nombreOpt}`;
-                        trabajadorSelect.appendChild(option);
-                    });
-                }
-
-                idInput.value = '';
-                document.getElementById('trabajador-nombre-input').value = '';
-            } catch (error) {
-                console.error('Error eliminando (reseteando) trabajador:', error);
-                showModal('Error', error.message);
-            }
-        });
-    }
-
-});
-
-
-// --- LÓGICA DE GESTIÓN DE NOMBRES DE TRABAJADORES (EN VISTA INVENTARIO - SOLO LECTURA) ---
-
-document.getElementById('trabajador-select').addEventListener('change', function () {
-    const id = this.value;
-    const container = document.getElementById('nombre-input-container');
-    const inputNombre = document.getElementById('trabajador-nombre');
-
-    if (id) {
-        container.style.display = 'block';
-        const nombreActual = nombresTrabajadores[id] || `Trabajador ${id}`;
-        inputNombre.value = nombreActual;
-        inputNombre.disabled = true;
-    } else {
-        container.style.display = 'none';
-    }
-});
-
-
-// Función para cargar la lista de trabajadores en la vista de Gestión
-function cargarListaTrabajadores() {
-    const lista = document.getElementById('lista-nombres-trabajadores');
-    if (!lista) return;
-    lista.innerHTML = '';
-
-    // Recorremos los IDs reales obtenidos desde la BD
-    Object.keys(nombresTrabajadores).forEach(id => {
-        const nombre = nombresTrabajadores[id] || `Trabajador ${id} (por defecto)`;
-        const li = document.createElement('li');
-        li.textContent = `ID ${id}: ${nombre}`;
-        lista.appendChild(li);
-    });
 }
 
+function handleLogout() {
+    sessionActive = false;
+    sessionStorage.removeItem('cafe_aromas_session');
+    document.getElementById('main-app').style.display = 'none';
+    document.getElementById('auth-view').style.display = 'flex';
+}
 
-// --- LÓGICA DE REGISTRO DE PRODUCCIÓN (Inventario + BD) ---
-document.getElementById('produccion-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
+function downloadCSV(filename, elementId) {
+    const table = document.getElementById(elementId);
+    if (!table || table.tagName !== 'TABLE') return;
 
-    const idTrabajador = document.getElementById('trabajador-select').value;
-    const kilos = parseFloat(document.getElementById('kilos-input').value);
-
-    if (!idTrabajador || kilos <= 0 || isNaN(kilos)) {
-        showModal('Error de Validación', 'Por favor, selecciona un trabajador e ingresa una cantidad de kilos válida.');
-        return;
-    }
-
-    const nombre = nombresTrabajadores[idTrabajador] || `Trabajador ${idTrabajador}`;
-
-    // 1. Enviar al backend para registrar en la base de datos
-    const formData = new FormData();
-    formData.append('id_trabajador', idTrabajador);
-    formData.append('kilos', kilos);
-
-    try {
-        const { data: trabajadorActual, error: fetchError } = await supabaseClient
-            .from('trabajador')
-            .select('*')
-            .eq('Id', idTrabajador)
-            .single();
-
-        if (fetchError || !trabajadorActual) {
-            console.error('Supabase error', fetchError);
-            showModal('Error', 'Error al comunicarse con la base de datos al registrar la producción.');
-            return;
-        }
-
-        const nuevosKilos = (trabajadorActual.kilos_cosechados || 0) + kilos;
-        const nuevoPagoPendiente = (trabajadorActual.pago_pendientekg || 0) + (kilos * PRECIO_KG);
-
-        const { error: dbError } = await supabaseClient
-            .from('trabajador')
-            .update({ kilos_cosechados: nuevosKilos, pago_pendientekg: nuevoPagoPendiente })
-            .eq('Id', idTrabajador);
-
-        if (dbError) {
-            console.error('Supabase error', dbError);
-            showModal('Error', 'No se pudo registrar la producción en la base de datos.');
-            return;
-        }
-
-        // 2. Si la BD respondió OK, registramos también en el historial local
-        let newCosechaId = produccionData.length + 1;
-
-        const nuevoRegistro = {
-            id: newCosechaId,
-            idTrabajador: idTrabajador,
-            nombre: nombre,
-            kilos: kilos,
-            fecha: new Date().toLocaleString()
-        };
-
-        produccionData.push(nuevoRegistro);
-        localStorage.setItem('produccionData', JSON.stringify(produccionData));
-
-        showModal(
-            'Éxito',
-            `Registro **ID ${nuevoRegistro.id}**: ${kilos.toFixed(2)} kg para ${nombre} exitoso. ` +
-            `Kilos acumulados pendientes de clasificar: ${getGlobalProductionTotal().toFixed(2)} KG`
-        );
-
-        this.reset();
-        document.getElementById('nombre-input-container').style.display = 'none';
-        renderProduccionTable();
-        updateStats();
-        updateClasificacionView();
-
-    } catch (error) {
-        console.error('Error en la petición de producción:', error);
-        showModal('Error', 'Ocurrió un error inesperado al registrar la producción. Intenta nuevamente.');
-    }
-});
-
-
-// Función para renderizar la tabla de producción
-function renderProduccionTable() {
-    const tbody = document.querySelector('#produccion-table tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    const ultimosRegistros = produccionData.slice(-10).reverse();
-
-    ultimosRegistros.forEach(registro => {
-        const row = tbody.insertRow();
-        row.insertCell().textContent = registro.id;
-
-        const nombreActual = registro.nombre; // nombre histórico
-        row.insertCell().textContent = nombreActual;
-
-        row.insertCell().textContent = registro.kilos.toFixed(2);
-        row.insertCell().textContent = registro.fecha;
+    let csv = [];
+    const rows = table.querySelectorAll('tr');
+    rows.forEach(row => {
+        const cols = Array.from(row.querySelectorAll('td, th')).map(c => c.innerText.replace(/,/g, '').replace(/\n/g, ' '));
+        csv.push(cols.join(','));
     });
+    triggerDownload(filename, csv.join('\n'));
 }
 
-
-// Función para actualizar las estadísticas de la vista Inicio
-// Función para actualizar las estadísticas de la vista Inicio
-async function updateStats() {
-    const totalCosechadoEl = document.getElementById('total-cosechado');
-    const pagosPendientesEl = document.getElementById('pagos-pendientes');
-
-    let totalKilosCosechados = 0;
-
-    try {
-        const { data, error } = await supabaseClient.from('trabajador').select('kilos_cosechados');
-
-        if (error) {
-            console.error('Error al obtener estadísticas de Supabase:', error);
-            totalKilosCosechados = getGlobalProductionTotal();
-        } else {
-            totalKilosCosechados = data.reduce((sum, el) => sum + (el.kilos_cosechados || 0), 0);
-        }
-    } catch (error) {
-        console.error('Error al obtener estadísticas de Supabase:', error);
-        totalKilosCosechados = getGlobalProductionTotal();
-    }
-
-    // 2. Kilos totales pagados (como ya lo manejabas con pagosTrabajadores)
-    const totalKilosPagados = Object.values(pagosTrabajadores)
-        .reduce((sum, paidKilos) => sum + paidKilos, 0);
-
-    // 3. Kilos y pagos PENDIENTES
-    const kilosPendientes = totalKilosCosechados - totalKilosPagados;
-    const pagoEstimado = kilosPendientes * PRECIO_KG;
-
-    // Mostrar el total cosechado (histórico)
-    if (totalCosechadoEl) {
-        totalCosechadoEl.textContent = `${totalKilosCosechados.toFixed(2)} kg`;
-    }
-
-    // Mostrar solo los pagos PENDIENTES
-    if (pagosPendientesEl) {
-        pagosPendientesEl.textContent = `$ ${pagoEstimado.toLocaleString('es-CO')} COP`;
-    }
+function downloadDataAsCSV(filename, headers, rows) {
+    let csv = [headers.join(',')];
+    rows.forEach(row => csv.push(row.join(',')));
+    triggerDownload(filename, csv.join('\n'));
 }
 
-
-
-// --- LÓGICA DE CÁLCULO DE NÓMINA Y HISTORIAL ---
-// Función para renderizar el reporte de nómina (Trabajadores) desde la BD
-async function renderNominaReporte() {
-    const reporteTableBody = document.querySelector('#reporte-cosecha-table tbody');
-    if (!reporteTableBody) return;
-    reporteTableBody.innerHTML = '';
-
-    try {
-        const { data: trabajadoresData, error: dbError } = await supabaseClient
-            .from('trabajador')
-            .select('*')
-            .order('Id', { ascending: true });
-
-        if (dbError) {
-            console.error('API error en nómina:', dbError);
-            showModal('Error', 'No se pudo cargar la nómina desde el servidor.');
-            return;
-        }
-
-        const trabajadores = trabajadoresData || [];
-
-        trabajadores.forEach(t => {
-            const id = String(t.Id);
-            const nombre = t.nombre || nombresTrabajadores[id] || `Trabajador ${id}`;
-
-            // 🟢 Total de kilos que ha hecho el trabajador
-            const kilosTotales = parseFloat(t.kilos_cosechados) || 0;
-
-            // 🔒 Kilos pendientes se determinan calculando totales vs pagados (desde history/pagoTrabajadores)
-            // Wait, their backend `nomina_reporte.php` returned `kilos_totales` and `kilos_pendientes`
-            const kilosPagadosPrevios = pagosTrabajadores[id] || 0;
-            const kilosPendientes = kilosTotales - kilosPagadosPrevios;
-            const pagoPendiente = kilosPendientes * PRECIO_KG;
-
-            const row = reporteTableBody.insertRow();
-            row.insertCell().textContent = id;
-            row.insertCell().textContent = nombre;
-
-            // 👉 Esta columna es "Kilos Cosechados" y muestra los kilos totales
-            row.insertCell().textContent = kilosTotales.toFixed(2);
-
-            // 👉 Esta columna es "Pago Pendiente"
-            row.insertCell().textContent = `$ ${pagoPendiente.toLocaleString('es-CO')}`;
-
-            const actionCell = row.insertCell();
-
-            if (kilosPendientes > 0) {
-                // Botón Historial
-                const btnHistorial = document.createElement('button');
-                btnHistorial.textContent = 'Ver Historial';
-                btnHistorial.classList.add('btn-small-historial');
-                btnHistorial.dataset.trabajadorId = id;
-                actionCell.appendChild(btnHistorial);
-
-                // Botón Pagado
-                const btnPaid = document.createElement('button');
-                btnPaid.textContent = 'Pagado';
-                btnPaid.classList.add('btn-small-paid');
-                btnPaid.dataset.trabajadorId = id;
-
-                // Usamos kilosTotales para mantener la lógica de markAsPaid
-                btnPaid.dataset.kilosTotales = kilosTotales;
-                actionCell.appendChild(btnPaid);
-            } else {
-                actionCell.textContent = 'Al día';
-            }
-        });
-
-        // Conectar eventos Historial (sigue usando produccionData por ahora)
-        document.querySelectorAll('.btn-small-historial').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const trabajadorId = this.dataset.trabajadorId;
-                showHistorialTrabajador(trabajadorId);
-            });
-        });
-
-        // Conectar evento Pagado
-        document.querySelectorAll('.btn-small-paid').forEach(btn => {
-            btn.addEventListener('click', function () {
-                const trabajadorId = this.dataset.trabajadorId;
-                const totalKilos = parseFloat(this.dataset.kilosTotales);
-                markAsPaid(trabajadorId, totalKilos);
-            });
-        });
-
-    } catch (error) {
-        console.error('Error en nómina:', error);
-        showModal('Error', 'Ocurrió un error al cargar la nómina.');
-    }
-}
-
-
-// --- FUNCIÓN: Marcar como pagado (actualiza BD + localStorage) ---
-async function markAsPaid(id, totalKilos) {
-    const nombre = nombresTrabajadores[id] || `Trabajador ${id}`;
-    const kilosPagadosPrevios = pagosTrabajadores[id] || 0;
-    const kilosPendientes = totalKilos - kilosPagadosPrevios;
-
-    if (kilosPendientes <= 0) {
-        showModal('Advertencia', `${nombre} ya está al día. No hay pagos pendientes.`);
-        return;
-    }
-
-    const pagoRealizado = kilosPendientes * PRECIO_KG;
-
-    // 1. Avisar a Supabase que pagamos TODOS los kilos pendientes
-    try {
-        const { error: dbError } = await supabaseClient
-            .from('trabajador')
-            .update({ pago_pendientekg: 0 })
-            .eq('Id', id);
-
-        if (dbError) {
-            console.error('Supabase error al pagar:', dbError);
-            showModal('Error', 'No se pudo registrar el pago en el servidor.');
-            return;
-        }
-
-        // 2. Mantener compatibilidad con la lógica local (pagosTrabajadores)
-        pagosTrabajadores[id] = totalKilos;
-        localStorage.setItem('pagosTrabajadores', JSON.stringify(pagosTrabajadores));
-
-        showModal(
-            'Pago Registrado',
-            `Se ha registrado el pago de **${kilosPendientes.toFixed(2)} kg** ` +
-            `($ ${pagoRealizado.toLocaleString('es-CO')}) a **${nombre}** (ID ${id}).`
-        );
-
-        // 3. Rerenderizar la tabla de nómina y actualizar estadísticas
-        renderNominaReporte();
-        updateStats();
-
-    } catch (error) {
-        console.error('Error al registrar pago:', error);
-        showModal('Error', 'Ocurrió un error al registrar el pago. Intenta nuevamente.');
-    }
-}
-
-
-// --- FUNCIÓN PARA MOSTRAR HISTORIAL DE COSECHA EN MODAL ---
-function showHistorialTrabajador(id) {
-    const nombre = nombresTrabajadores[id] || `Trabajador ${id}`;
-
-    // 1. Filtrar los registros de producción solo para este trabajador
-    const historial = produccionData
-        .filter(reg => String(reg.idTrabajador) === String(id))
-        .reverse(); // Mostrar lo más reciente primero
-
-    if (historial.length === 0) {
-        showModal(`Historial de Cosecha - ID ${id}`, `No hay registros de cosecha para ${nombre}.`);
-        return;
-    }
-
-    // 2. Construir el contenido HTML para el historial
-    let contentHTML = `
-        <ul class="historial-list">
-        <li><strong>ID Cosecha</strong><strong>Kilos</strong><strong>Fecha y Hora</strong></li>
-    `;
-
-    historial.forEach(reg => {
-        contentHTML += `
-            <li>
-                <span>${reg.id}</span>
-                <span class="historial-kilos">${reg.kilos.toFixed(2)} kg</span>
-                <span>${reg.fecha}</span>
-            </li>
-        `;
-    });
-
-    contentHTML += `</ul>`;
-
-    // 3. Mostrar el modal con el contenido HTML
-    showModal(`Historial de Cosecha - ${nombre} (ID ${id})`, contentHTML);
-}
-
-
-// --- LÓGICA DE PAGO DE CHOFERES Y EXCEL  ---
-document.getElementById('chofer-pago-form').addEventListener('submit', async function (e) {
-    e.preventDefault();
-
-    const chofer = document.getElementById('chofer-select').value;
-    const viajes = parseInt(document.getElementById('viajes-input').value);
-    const tarifa = parseFloat(document.getElementById('tarifa-input').value);
-
-    if (!chofer || viajes <= 0 || tarifa <= 0 || isNaN(viajes) || isNaN(tarifa)) {
-        showModal('Error de Validación', 'Por favor, ingresa datos válidos para el pago del chofer.');
-        return;
-    }
-
-    const idChofer = parseInt(chofer.split('-')[1]);
-
-    try {
-        const { data: choferActual, error: fetchError } = await supabaseClient
-            .from('chofer')
-            .select('*')
-            .eq('Id', idChofer)
-            .single();
-
-        if (fetchError || !choferActual) {
-            showModal('Error', 'Error al comunicarse con la base de datos de choferes.');
-            return;
-        }
-
-        const nuevosViajes = (choferActual.numero_viajes || 0) + viajes;
-
-        const { error: dbError } = await supabaseClient
-            .from('chofer')
-            .update({ numero_viajes: nuevosViajes, tarifa: tarifa })
-            .eq('Id', idChofer);
-
-        if (dbError) {
-            showModal('Error', 'No se pudo registrar el pago del chofer en la base de datos.');
-            return;
-        }
-
-        const pagoTotal = viajes * tarifa;
-        const data = { chofer: choferActual.nombre, viajes: viajes };
-
-        showModal(
-            'Éxito',
-            `Pago registrado para ${data.chofer}: ` +
-            `$ ${pagoTotal.toLocaleString('es-CO')} COP por ${data.viajes} viajes.`
-        );
-
-        this.reset();
-    } catch (error) {
-        console.error('Error en la petición de chofer:', error);
-        showModal('Error', 'Ocurrió un error inesperado al registrar el pago del chofer. Intenta nuevamente.');
-    }
-});
-
-
-// Función genérica para exportar a CSV
-function exportToCsv(filename, data) {
-    const processedData = data.map(row =>
-        row.map(item => `"${String(item).replace(/"/g, '""')}"`)
-    );
-
-    const csvContent = "data:text/csv;charset=utf-8," + processedData.map(e => e.join(",")).join("\n");
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
+function triggerDownload(filename, content) {
+    const csvFile = new Blob([content], { type: 'text/csv' });
+    const link = document.createElement('a');
+    link.download = filename;
+    link.href = window.URL.createObjectURL(csvFile);
+    link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 }
 
-document.getElementById('generar-reporte-cosecha-btn').addEventListener('click', () => {
-    // Para el CSV de reporte, usamos Kilos Totales Cosechados (no pendientes) para tener el historial completo.
-    const headers = ["ID", "Nombre", "Kilos Totales Cosechados (kg)", "Kilos Pagados (kg)", "Kilos Pendientes (kg)", "Pago Pendiente ($COP)"];
-    const data = [headers];
+function showView(viewName) {
+    if (!sessionActive && viewName !== 'auth') return;
+    document.querySelectorAll('.view').forEach(v => v.style.display = 'none');
+    const target = document.getElementById(viewName + '-view');
+    if (target) target.style.display = 'block';
+}
 
-    const resumenPagos = {};
-    produccionData.forEach(reg => {
-        if (!resumenPagos[reg.idTrabajador]) {
-            resumenPagos[reg.idTrabajador] = { kilos: 0, nombre: nombresTrabajadores[reg.idTrabajador] || `Trabajador ${reg.idTrabajador}` };
-        }
-        resumenPagos[reg.idTrabajador].kilos += reg.kilos;
-    });
+// --- FUNCIONES DE BASE DE DATOS ---
 
-    for (let i = 1; i <= TRABAJADORES_TOTAL; i++) {
-        const id = String(i);
-        const nombre = nombresTrabajadores[id] || `Trabajador ${id}`;
-        const entry = resumenPagos[id] || { kilos: 0 };
-
-        const kilosPagadosPrevios = pagosTrabajadores[id] || 0;
-        const kilosPendientes = entry.kilos - kilosPagadosPrevios;
-        const pagoPendiente = kilosPendientes * PRECIO_KG;
-
-        data.push([
-            id,
-            nombre,
-            entry.kilos.toFixed(2),
-            kilosPagadosPrevios.toFixed(2),
-            kilosPendientes.toFixed(2),
-            pagoPendiente.toFixed(2)
-        ]);
+async function loadTrabajadoresFromDB() {
+    try {
+        const { data, error } = await supabaseClient.from('trabajador').select('*').order('Id', { ascending: true });
+        if (error) throw error;
+        nombresTrabajadores = {};
+        const select = document.getElementById('trabajador-select');
+        if (select) select.innerHTML = '<option value="">-- Elige un trabajador --</option>';
+        
+        data.forEach(t => {
+            nombresTrabajadores[t.Id] = t.nombre;
+            if (select) {
+                const opt = new Option(`${t.Id} - ${t.nombre}`, t.Id);
+                select.add(opt);
+            }
+        });
+    } catch (error) {
+        console.error('Error cargando trabajadores:', error);
     }
-    exportToCsv('Reporte_Nomina_Cosecha.csv', data);
-    showModal('Descarga Éxito', 'Reporte de Nómina de Cosecha generado como CSV.');
-});
+}
 
-// Reporte de Pago de Choferes csv
-document.getElementById('generar-reporte-choferes-btn').addEventListener('click', async () => {
-    // Ajustamos headers a lo que realmente tenemos en la BD
-    const headers = ["ID", "Chofer", "Viajes", "Tarifa por Viaje ($COP)", "Pago Total ($COP)"];
-    const data = [headers];
+async function loadChoferesFromDB() {
+    try {
+        const { data, error } = await supabaseClient.from('chofer').select('*').order('Id', { ascending: true });
+        if (error) throw error;
+        const select = document.getElementById('chofer-select');
+        if (select) {
+            select.innerHTML = '<option value="">-- Elige un chofer --</option>';
+            data.forEach(c => select.add(new Option(c.nombre, c.Id)));
+        }
+    } catch (error) {
+        console.error('Error cargando choferes:', error);
+    }
+}
+
+async function updateStats() {
+    try {
+        const { data, error } = await supabaseClient.from('trabajador').select('kilos_cosechados, pago_pendientekg');
+        if (error) throw error;
+
+        const stats = data.reduce((acc, t) => {
+            acc.kilos += parseFloat(t.kilos_cosechados) || 0;
+            acc.pagos += parseInt(t.pago_pendientekg) || 0;
+            return acc;
+        }, { kilos: 0, pagos: 0 });
+
+        const totalEl = document.getElementById('total-cosechado');
+        const pendienteEl = document.getElementById('pagos-pendientes');
+        if (totalEl) totalEl.textContent = `${stats.kilos.toFixed(2)} kg`;
+        if (pendienteEl) pendienteEl.textContent = `$ ${stats.pagos.toLocaleString('es-CO')} COP`;
+    } catch (error) {}
+}
+
+// --- PRODUCCIÓN ---
+
+async function loadProduccionFromDB() {
+    try {
+        const { data, error } = await supabaseClient.from('produccion').select('*').order('fecha', { ascending: false }).limit(10);
+        if (error) throw error;
+        const tbody = document.querySelector('#produccion-table tbody');
+        if (!tbody) return;
+        tbody.innerHTML = data.map(reg => `
+            <tr>
+                <td>${reg.Id}</td>
+                <td>${nombresTrabajadores[reg.id_trabajador] || `ID ${reg.id_trabajador}`}</td>
+                <td>${parseFloat(reg.kilos).toFixed(2)}</td>
+                <td>${new Date(reg.fecha).toLocaleString()}</td>
+            </tr>
+        `).join('');
+    } catch (error) {}
+}
+
+document.getElementById('produccion-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const id = parseInt(document.getElementById('trabajador-select').value);
+    const kilos = parseFloat(document.getElementById('kilos-input').value);
+
+    if (!id || isNaN(kilos)) return showModal('Error', 'Datos inválidos.');
 
     try {
-        const { data: registros, error: dbError } = await supabaseClient.from('chofer').select('*');
+        const { error: insErr } = await supabaseClient.from('produccion').insert([{ id_trabajador: id, kilos }]);
+        if (insErr) throw insErr;
 
-        if (dbError) {
-            console.error('API error choferes:', dbError);
-            showModal('Error', 'No se pudo cargar el reporte de choferes desde Supabase.');
-            return;
-        }
+        const { data: t, error: fErr } = await supabaseClient.from('trabajador').select('*').eq('Id', id).single();
+        if (fErr) throw fErr;
 
-        (registros || []).forEach(reg => {
-            const viajes = reg.numero_viajes || 0;
-            const tarifa = reg.tarifa || 0;
-            const total = viajes * tarifa;
+        await supabaseClient.from('trabajador').update({ 
+            kilos_cosechados: (parseFloat(t.kilos_cosechados) || 0) + kilos, 
+            pago_pendientekg: (parseInt(t.pago_pendientekg) || 0) + (kilos * PRECIO_KG) 
+        }).eq('Id', id);
 
-            data.push([
-                reg.Id,
-                reg.nombre,
-                viajes,
-                tarifa.toFixed(2),
-                total.toFixed(2)
-            ]);
-        });
-
-        exportToCsv('Reporte_Pago_Choferes.csv', data);
-        showModal('Descarga Éxito', 'Reporte de Pago de Choferes generado como CSV.');
+        showModal('Éxito', `Registrado: ${kilos.toFixed(2)} kg.`);
+        this.reset();
+        await loadProduccionFromDB();
+        updateStats();
     } catch (error) {
-        console.error('Error al generar reporte de choferes:', error);
-        showModal('Error', 'Ocurrió un error al generar el reporte de choferes.');
+        showModal('Error', 'No se pudo guardar.');
     }
 });
 
+// --- GESTIÓN TRABAJADORES ---
 
-// --- LÓGICA PARA GESTIÓN DE GASTOS ---
+document.getElementById('gestionar-trabajador-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const id = document.getElementById('trabajador-id-input').value;
+    const nombre = document.getElementById('trabajador-nombre-input').value.trim();
 
-// Función para renderizar la tabla de gastos
-// --- LÓGICA PARA GESTIÓN DE GASTOS ---
+    if (!id || !nombre) return;
 
-// Cargar gastos desde la base de datos
+    try {
+        const { error } = await supabaseClient.from('trabajador').update({ nombre }).eq('Id', id);
+        if (error) throw error;
+        showModal('Éxito', 'Actualizado.');
+        await loadTrabajadoresFromDB();
+        cargarListaTrabajadoresUI();
+        this.reset();
+    } catch (error) { showModal('Error', 'No se pudo actualizar.'); }
+});
+
+document.getElementById('btn-eliminar-trabajador')?.addEventListener('click', async function() {
+    const id = document.getElementById('trabajador-id-input').value;
+    if (!id) return showModal('Error', 'Ingrese un ID.');
+
+    try {
+        await supabaseClient.from('trabajador').update({ nombre: `Trabajador ${id}` }).eq('Id', id);
+        showModal('Éxito', 'Restablecido.');
+        await loadTrabajadoresFromDB();
+        cargarListaTrabajadoresUI();
+    } catch (error) { showModal('Error', 'No se pudo restablecer.'); }
+});
+
+// --- NÓMINA ---
+
+async function renderNominaReporte() {
+    const tbody = document.querySelector('#reporte-cosecha-table tbody');
+    if (!tbody) return;
+    try {
+        const { data, error } = await supabaseClient.from('trabajador').select('*').order('Id', { ascending: true });
+        if (error) throw error;
+        tbody.innerHTML = data.map(t => `
+            <tr>
+                <td>${t.Id}</td>
+                <td>${t.nombre}</td>
+                <td>${(parseFloat(t.kilos_cosechados) || 0).toFixed(2)}</td>
+                <td>$ ${(parseInt(t.pago_pendientekg) || 0).toLocaleString('es-CO')}</td>
+                <td>${parseInt(t.pago_pendientekg) > 0 ? `<button class="btn-small-paid" onclick="markAsPaid(${t.Id}, ${t.pago_pendientekg})">Pagado</button>` : 'Al día'}</td>
+            </tr>
+        `).join('');
+    } catch (error) {}
+}
+
+async function markAsPaid(id, monto) {
+    try {
+        await supabaseClient.from('pagos').insert([{ id_trabajador: id, kilos_pagados: monto/PRECIO_KG, monto_pagado: monto }]);
+        await supabaseClient.from('trabajador').update({ pago_pendientekg: 0 }).eq('Id', id);
+        showModal('Éxito', 'Pago registrado.');
+        await renderNominaReporte();
+        updateStats();
+    } catch (error) { showModal('Error', 'Error al pagar.'); }
+}
+
+// --- CHOFERES ---
+
+document.getElementById('chofer-pago-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const id = document.getElementById('chofer-select').value;
+    const viajes = parseInt(document.getElementById('viajes-input').value);
+    const tarifa = parseFloat(document.getElementById('tarifa-input').value);
+
+    try {
+        const { data: c } = await supabaseClient.from('chofer').select('*').eq('Id', id).single();
+        await supabaseClient.from('chofer').update({ numero_viajes: (c.numero_viajes || 0) + viajes, tarifa }).eq('Id', id);
+        showModal('Éxito', 'Pago registrado.');
+        this.reset();
+    } catch (error) { showModal('Error', 'Error al registrar.'); }
+});
+
+// --- CLASIFICACIÓN ---
+
+async function loadClasificacionFromDB() {
+    try {
+        const { data, error } = await supabaseClient.from('clasificacion').select('*').order('fecha', { ascending: false });
+        if (error) throw error;
+        historialClasificacion = data || [];
+        kilosTotalClasificados = historialClasificacion.reduce((sum, r) => sum + (parseFloat(r.total_clasificado) || 0), 0);
+        
+        const tbody = document.querySelector('#clasificacion-historial-table tbody');
+        if (tbody) {
+            tbody.innerHTML = historialClasificacion.map(r => `
+                <tr>
+                    <td>${new Date(r.fecha).toLocaleDateString()}</td>
+                    <td>${parseFloat(r.kilos_cenicafe).toFixed(2)}</td>
+                    <td>${parseFloat(r.kilos_colombia).toFixed(2)}</td>
+                    <td>${parseFloat(r.total_clasificado).toFixed(2)}</td>
+                </tr>
+            `).join('');
+        }
+        await updateClasificacionView();
+    } catch (error) {}
+}
+
+async function updateClasificacionView() {
+    try {
+        const { data } = await supabaseClient.from('trabajador').select('kilos_cosechados');
+        const total = data.reduce((sum, t) => sum + (parseFloat(t.kilos_cosechados) || 0), 0);
+        const pendiente = Math.max(0, total - kilosTotalClasificados);
+        
+        document.getElementById('cosecha-kilos-total-display').textContent = total.toFixed(2);
+        document.getElementById('cosecha-kilos-restante-display').textContent = pendiente.toFixed(2);
+        
+        const btn = document.getElementById('btn-registrar-clasificacion');
+        if(btn) {
+            btn.disabled = pendiente < 0.1;
+            btn.textContent = pendiente < 0.1 ? 'Sin kilos pendientes' : 'Registrar Clasificación';
+        }
+    } catch (error) {}
+}
+
+document.getElementById('registro-clasificacion-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const ceni = parseFloat(document.getElementById('kilos-cenicafe').value) || 0;
+    const col = parseFloat(document.getElementById('kilos-variedad-colombia').value) || 0;
+    const total = ceni + col;
+    
+    if (total <= 0) return showModal('Error', 'Ingrese cantidades.');
+
+    try {
+        await supabaseClient.from('clasificacion').insert([{ kilos_cenicafe: ceni, kilos_colombia: col, total_clasificado: total }]);
+        showModal('Éxito', 'Guardado.');
+        this.reset();
+        await loadClasificacionFromDB();
+    } catch (error) { showModal('Error', 'Error al guardar.'); }
+});
+
+// --- GASTOS ---
+
 async function loadGastosFromDB() {
     try {
-        const { data: gastosDb, error: dbError } = await supabaseClient.from('gestion_gastos').select('*');
-        if (dbError) {
-            console.error('API error gastos:', dbError);
-            showModal('Error', 'No se pudieron cargar los gastos desde Supabase.');
-            return;
+        const { data, error } = await supabaseClient.from('gestion_gastos').select('*').order('fecha', { ascending: false });
+        if (error) throw error;
+        const tbody = document.querySelector('#gastos-table tbody');
+        if (tbody) {
+            tbody.innerHTML = data.map(g => `
+                <tr>
+                    <td>${g.Id}</td>
+                    <td>${g.fecha}</td>
+                    <td>${g.descripcion}</td>
+                    <td>$ ${parseFloat(g.monto).toLocaleString('es-CO')}</td>
+                </tr>
+            `).join('');
         }
-
-        // Guardamos los gastos que vienen de Supabase en memoria
-        gastosData = (gastosDb || []).map(g => ({
-            id: g.Id,
-            fecha: g.fecha,
-            descripcion: g.descripcion,
-            monto: g.monto
-        }));
-        renderGastosTable();
-    } catch (error) {
-        console.error('Error al cargar gastos:', error);
-        showModal('Error', 'Ocurrió un error al cargar los gastos.');
-    }
+    } catch (error) {}
 }
 
-// Función para renderizar la tabla de gastos
-function renderGastosTable() {
-    const tbody = document.querySelector('#gastos-table tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    // Ordenar del más reciente al más antiguo por fecha, luego por Id
-    const gastosOrdenados = [...gastosData].sort((a, b) => {
-        const dateA = new Date(a.fecha);
-        const dateB = new Date(b.fecha);
-        if (dateA.getTime() !== dateB.getTime()) {
-            return dateB - dateA; // Más reciente primero
-        }
-        return b.id - a.id; // Si misma fecha, el de mayor Id primero
-    });
-
-    gastosOrdenados.forEach(gasto => {
-        const row = tbody.insertRow();
-        row.insertCell().textContent = gasto.id;
-        row.insertCell().textContent = gasto.fecha;
-        row.insertCell().textContent = gasto.descripcion;
-        row.insertCell().textContent = `$ ${gasto.monto.toLocaleString('es-CO')}`;
-    });
-}
-
-
-// Lógica de Registro de Gastos (PHP + MySQL)
-const registroGastoForm = document.getElementById('registro-gasto-form');
-
-if (registroGastoForm) {
-    registroGastoForm.addEventListener('submit', async function (e) {
-        e.preventDefault();
-
-        const descripcion = document.getElementById('gasto-descripcion').value.trim();
-        const monto = parseFloat(document.getElementById('gasto-monto').value);
-        const fecha = document.getElementById('gasto-fecha').value; // Formato YYYY-MM-DD
-
-        if (!descripcion || monto <= 0 || isNaN(monto) || !fecha) {
-            showModal('Error de Validación', 'Por favor, completa todos los campos con valores válidos.');
-            return;
-        }
-
-        try {
-            const { error: dbError } = await supabaseClient
-                .from('gestion_gastos')
-                .insert([{ descripcion: descripcion, monto: monto, fecha: fecha }]);
-
-            if (dbError) {
-                console.error('Supabase error al registrar gasto:', dbError);
-                showModal('Error', 'No se pudo registrar el gasto en la base de datos.');
-                return;
-            }
-
-            showModal(
-                'Éxito',
-                `Gasto de $ ${monto.toLocaleString('es-CO')} COP registrado para: ${descripcion}.`
-            );
-
-            this.reset();
-
-            // Volvemos a cargar desde la BD (actualiza gastosData + tabla)
-            await loadGastosFromDB();
-
-        } catch (error) {
-            console.error('Error en el registro de gasto:', error);
-            showModal('Error', 'Ocurrió un error inesperado al registrar el gasto.');
-        }
-    });
-}
-
-
-// Lógica para exportar el reporte de gastos a CSV (desde la BD)
-document.getElementById('generar-reporte-gastos-btn').addEventListener('click', async () => {
-    const headers = ["ID", "Fecha", "Descripción", "Monto ($COP)"];
-    const data = [headers];
+document.getElementById('registro-gasto-form')?.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const descripcion = document.getElementById('gasto-descripcion').value;
+    const monto = parseFloat(document.getElementById('gasto-monto').value);
+    const fecha = document.getElementById('gasto-fecha').value;
+    
+    if (!descripcion || isNaN(monto) || !fecha) return showModal('Error', 'Campos incompletos.');
 
     try {
-        const { data: gastosDb, error: dbError } = await supabaseClient.from('gestion_gastos').select('*');
-        if (dbError) {
-            console.error('API error gastos CSV:', dbError);
-            showModal('Error', 'No se pudo cargar el reporte de gastos desde Supabase.');
-            return;
-        }
-
-        const gastos = gastosDb || [];
-
-        gastos.forEach(reg => {
-            data.push([
-                reg.Id,
-                reg.fecha,
-                reg.descripcion,
-                (reg.monto || 0).toFixed(2)
-            ]);
-        });
-
-        exportToCsv('Reporte_Gastos.csv', data);
-        showModal('Descarga Éxito', 'Reporte de Gastos generado como CSV.');
-    } catch (error) {
-        console.error('Error al generar reporte de gastos:', error);
-        showModal('Error', 'Ocurrió un error al generar el reporte de gastos.');
-    }
-});
-
-
-// -------------------------------------------------------------------
-// --- LÓGICA DE CLASIFICACIÓN DE COSECHAS (NUEVA LÓGICA GLOBAL) ---
-// -------------------------------------------------------------------
-
-// Variables para la nueva vista de clasificación
-const cosechaKilosTotalDisplay = document.getElementById('cosecha-kilos-total-display');
-const cosechaKilosRestanteDisplay = document.getElementById('cosecha-kilos-restante-display');
-const registroClasificacionForm = document.getElementById('registro-clasificacion-form');
-const btnRegistrarClasificacion = document.getElementById('btn-registrar-clasificacion');
-const clasificacionHistorialTableBody = document.querySelector('#clasificacion-historial-table tbody');
-const lastClassificationDateEl = document.getElementById('last-classification-date');
-
-// Función para calcular el total de kilos cosechados (acumulado total)
-function getGlobalProductionTotal() {
-    return produccionData.reduce((sum, reg) => sum + reg.kilos, 0);
-}
-
-// Función para renderizar la tabla de historial
-function renderHistorialClasificacion() {
-    if (!clasificacionHistorialTableBody) return;
-    clasificacionHistorialTableBody.innerHTML = '';
-
-    // El backend ya viene ordenado, pero si quieres puedes ordenar aquí también
-    const historialOrdenado = [...historialClasificacion];
-
-    historialOrdenado.forEach(registro => {
-        const row = clasificacionHistorialTableBody.insertRow();
-
-        const cenicafe = parseFloat(registro.kilos_cenicafe) || 0;
-        const variedad = parseFloat(registro.kilos_colombia) || 0;
-        const total = parseFloat(registro.total_clasificado) || 0;
-
-        row.insertCell().textContent = registro.fecha; // YYYY-MM-DD
-        row.insertCell().textContent = cenicafe.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        row.insertCell().textContent = variedad.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        row.insertCell().textContent = total.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    });
-}
-
-
-/**
- * Actualiza la vista de clasificación con los totales globales.
- */
-function updateClasificacionView() {
-    if (!cosechaKilosTotalDisplay) return;
-
-    const totalCosechado = getGlobalProductionTotal();
-    const kilosPendientes = totalCosechado - kilosTotalClasificados;
-    const ultimoRegistro = historialClasificacion.length > 0 ? historialClasificacion[historialClasificacion.length - 1] : null;
-
-    cosechaKilosTotalDisplay.textContent = totalCosechado.toFixed(2).toLocaleString('es-CO');
-    cosechaKilosRestanteDisplay.textContent = kilosPendientes.toFixed(2).toLocaleString('es-CO');
-
-    // Actualizar fecha de última clasificación
-    if (lastClassificationDateEl) {
-        lastClassificationDateEl.textContent = ultimoRegistro ? `Última Clasificación: ${ultimoRegistro.fecha}` : 'Última Clasificación: Nunca';
-    }
-
-    // Habilitar / Deshabilitar formulario
-    if (kilosPendientes > 0) {
-        btnRegistrarClasificacion.disabled = false;
-        btnRegistrarClasificacion.textContent = 'Registrar Clasificación Pendiente';
-        // Sugerir la cantidad a clasificar en los placeholders
-        document.getElementById('kilos-cenicafe').placeholder = `Máx. ${kilosPendientes.toFixed(2)} KG`;
-        document.getElementById('kilos-variedad-colombia').placeholder = `Máx. ${kilosPendientes.toFixed(2)} KG`;
-        registroClasificacionForm.querySelector('input#kilos-cenicafe').required = true;
-        registroClasificacionForm.querySelector('input#kilos-variedad-colombia').required = true;
-    } else {
-        btnRegistrarClasificacion.disabled = true;
-        btnRegistrarClasificacion.textContent = 'No hay Kilos Pendientes de Clasificar';
-        document.getElementById('kilos-cenicafe').placeholder = '0.00 KG';
-        document.getElementById('kilos-variedad-colombia').placeholder = '0.00 KG';
-        // Para que no salten errores de required cuando está deshabilitado
-        registroClasificacionForm.querySelector('input#kilos-cenicafe').required = false;
-        registroClasificacionForm.querySelector('input#kilos-variedad-colombia').required = false;
-    }
-
-    // Renderizar la tabla de historial
-    renderHistorialClasificacion();
-}
-
-// 2. Manejar el registro de la clasificación
-if (registroClasificacionForm) {
-    registroClasificacionForm.addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        // Si el botón está deshabilitado por no haber kilos pendientes, no procesar
-        if (btnRegistrarClasificacion.disabled) {
-            showModal('Advertencia', 'No hay kilos de cosecha pendientes de clasificar.');
-            return;
-        }
-
-        const kilosCenicafe = parseFloat(document.getElementById('kilos-cenicafe').value) || 0;
-        const kilosVariedadColombia = parseFloat(document.getElementById('kilos-variedad-colombia').value) || 0;
-        const totalClasificadoEnEstaSesion = kilosCenicafe + kilosVariedadColombia;
-
-        const totalCosechado = getGlobalProductionTotal();
-        const kilosPendientes = totalCosechado - kilosTotalClasificados;
-
-
-        if (kilosCenicafe < 0 || kilosVariedadColombia < 0) {
-            showModal('Error', 'Los kilos clasificados no pueden ser valores negativos.');
-            return;
-        }
-
-        if (totalClasificadoEnEstaSesion <= 0) {
-            showModal('Advertencia', 'Debe clasificar una cantidad de kilos mayor a cero.');
-            return;
-        }
-
-        // Verificar que el total clasificado no exceda los kilos pendientes
-        if (totalClasificadoEnEstaSesion > kilosPendientes) {
-            showModal('Advertencia',
-                `El total clasificado (${totalClasificadoEnEstaSesion.toFixed(2).toLocaleString('es-CO')} KG) excede los kilos pendientes (${kilosPendientes.toFixed(2).toLocaleString('es-CO')} KG). Por favor, corrija los valores.`
-            );
-            return;
-        }
-
-        // --- Actualizar el estado global ---
-        kilosTotalClasificados += totalClasificadoEnEstaSesion;
-
-        // Registrar la sesión de clasificación en el historial
-        const nuevoRegistroHistorial = {
-            fecha: new Date().toLocaleString(),
-            cenicafe: kilosCenicafe,
-            variedadColombia: kilosVariedadColombia,
-            totalClasificado: totalClasificadoEnEstaSesion
-        };
-
-        historialClasificacion.push(nuevoRegistroHistorial);
-
-        localStorage.setItem('kilosTotalClasificados', kilosTotalClasificados);
-        localStorage.setItem('historialClasificacion', JSON.stringify(historialClasificacion));
-
-        // Muestra el mensaje de éxito
-        showModal('Éxito',
-            `Clasificación global registrada.<br>` +
-            `Kilos Cenicafé: **${kilosCenicafe.toFixed(2).toLocaleString('es-CO')} KG**.<br>` +
-            `Kilos Variedad Colombia: **${kilosVariedadColombia.toFixed(2).toLocaleString('es-CO')} KG**.<br>`
-        );
-
+        await supabaseClient.from('gestion_gastos').insert([{ descripcion, monto, fecha }]);
+        showModal('Éxito', 'Gasto registrado.');
         this.reset();
-        updateClasificacionView();
-    });
+        await loadGastosFromDB();
+    } catch (error) { showModal('Error', 'Error al guardar.'); }
+});
+
+// --- AUTH HANDLERS ---
+
+async function handleLogin(e) {
+    e.preventDefault();
+    const user = document.getElementById('username').value.trim();
+    const pass = document.getElementById('password').value;
+    
+    try {
+        const { data, error } = await supabaseClient.from('usuarios').select('*').eq('usuario', user).maybeSingle();
+        if (error || !data || data.contraseña !== pass) return showModal('Error', 'Credenciales incorrectas.');
+
+        sessionActive = true;
+        sessionStorage.setItem('cafe_aromas_session', user);
+        document.getElementById('auth-view').style.display = 'none';
+        document.getElementById('main-app').style.display = 'grid';
+        showView('inicio');
+    } catch (error) { showModal('Error', 'Error de conexión.'); }
 }
 
+async function handleRegister(e) {
+    e.preventDefault();
+    const user = document.getElementById('reg-username').value.trim();
+    const pass = document.getElementById('reg-password').value;
+    const confirm = document.getElementById('reg-confirm').value;
 
-// -------------------------------------------------------------------
-// Se asegura de que la vista de clasificación se inicialice correctamente al cargar.
-document.addEventListener('DOMContentLoaded', () => {
-    // ... otros listeners
-    // No llamamos a updateClasificacionView aquí, se llama desde el listener de navegación.
-});
+    if (user.length < 3 || pass.length < 6) return showModal('Error', 'Usuario min. 3, Clave min. 6 caracteres.');
+    if (pass !== confirm) return showModal('Error', 'Las claves no coinciden.');
+
+    try {
+        const { error } = await supabaseClient.from('usuarios').insert([{ usuario: user, contraseña: pass }]);
+        if (error) throw error;
+        showModal('Éxito', 'Cuenta creada.');
+        document.getElementById('register-form').reset();
+        document.getElementById('register-form').style.display = 'none';
+        document.getElementById('login-form').style.display = 'block';
+    } catch (error) { showModal('Error', 'Error al registrar.'); }
+}
+
+function cargarListaTrabajadoresUI() {
+    const lista = document.getElementById('lista-nombres-trabajadores');
+    if (!lista) return;
+    lista.innerHTML = Object.keys(nombresTrabajadores).map(id => `<li>ID ${id}: ${nombresTrabajadores[id]}</li>`).join('');
+}
